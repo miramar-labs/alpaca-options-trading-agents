@@ -1,0 +1,299 @@
+description: "3-agent trading floor (Analyst / Dealer / Floor Broker) — Analyst picks the tradeable universe, Dealer decides BUY/HOLD/SELL, Floor Broker executes on Alpaca."
+
+llm:
+  base_url: "http://192.168.1.200:11434/v1"  # DGX_HOST_IP — Ollama systemd service on DGX (not in k3s)
+  model: "qwen3.6:35b-a3b"                    # see docs/models.md for model choice + Ollama-vs-vLLM decision
+  temperature: 0.1
+  request_timeout_s: 120   # per-request wall-clock ceiling for Ollama calls; a hung generation
+                           # fails fast instead of stacking behind the 10-min poll cycle
+
+langsmith:
+  enabled: true
+  project: "alpaca-options-trading-agents"   # requires LANGCHAIN_API_KEY in the mlabs-api-keys secret
+  sampling_rate: 0.5   # caps Dealer's poll-driven trace volume under the free Developer plan's 5k traces/month limit
+
+slack:
+  enabled: true   # requires SLACK_WEBHOOK_URL2 in the mlabs-api-keys secret; posts to #miramar-trading-floor
+
+floor_broker:
+  base_url: "http://floor-broker.alpaca-options-trader.svc.cluster.local:8000"
+
+# The one live paper account the whole floor trades on -- every order (stocks, crypto, options
+# alike) routes here, and the EOD recap + README P/L badges report this account only. key_env/
+# secret_env name the env vars its credentials are read from (see src/common/alpaca_client.py).
+# For this repo ALPACA_PAPER_API_KEY / ALPACA_PAPER_API_SECRET hold the Alpaca hackathon
+# competition account credentials directly -- there is no KEY2 switch target. config.yaml is
+# polled fresh every 60s (src/common/config.py), so changing these repoints a running pod at a
+# different paper account with no rebuild/redeploy, as long as that account's credentials already
+# exist under those env var names in the mlabs-api-keys k8s Secret (a pod restart is still needed
+# the first time a new named pair is added to the Secret, since env var values are fixed at pod
+# start; only which pair is *active* is live-switchable).
+alpaca:
+  live:
+    key_env: "ALPACA_PAPER_API_KEY"
+    secret_env: "ALPACA_PAPER_API_SECRET"
+
+trading:
+  slP: 0.98
+  tpP: 1.05
+  pollsecs: 600
+  buffer: 15
+  market_override: false
+  stocks:
+    enabled: true         # set false to pause Analyst/Dealer handling of equities entirely
+  crypto:
+    enabled: false        # out of scope for the hackathon subset -- disabled by flag only
+  crypto_taapi_exchange: "binance"   # TAAPI venue used for indicator requests on crypto symbols
+
+ohlcv_enrichment:
+  enabled: true             # Stage 2 Dealer enrichment: config-only off switch if live behavior regresses
+  timeframes: ["5m", "1h", "1d"]
+  bar_count: 60
+  realized_vol_window: 20
+  atr_period: 14
+  distance_window: 20
+
+# Written/updated by /configure-strategy (skills/configure-strategy/SKILL.md); reverted to
+# baseline by /revert-strategy. Enforced directly by src/floor_broker/execution.py -- see that
+# module's buy()/check_pending_fills()/check_crypto_stops() for exactly which fields are live.
+strategy:
+  daily_profit_target_usd: 1000   # blocks new BUYs once today's equity gain reaches this
+  daily_loss_limit_usd: 2500      # blocks new BUYs once today's equity loss reaches this -- set
+                                   # to 2500 on 2026-08-05, see docs/strategy.md
+  halt_behavior: block_new_buys   # only this is enforced; flatten_positions is recorded intent only
+  crypto_slP: 0.98                # synthetic stop-loss, as a fraction of crypto fill price
+  crypto_tpP: 1.03                # synthetic take-profit, as a fraction of crypto fill price
+  position_sizing: risk_based     # "flat_budget" uses the Analyst-authorized budget as-is;
+                                   # "risk_based" (live since 2026-08-07) caps that budget so a
+                                   # stopped-out BUY loses at most risk_per_trade_usd -- see
+                                   # execution.py's _risk_based_budget_cap(). Only ever caps the
+                                   # budget down, never inflates it above what the Analyst
+                                   # authorized. Note slP/crypto_slP are flat percentages today
+                                   # (no per-symbol volatility-adjusted stop), so this mainly
+                                   # removes the Analyst LLM's arbitrary per-pick budget as the de
+                                   # facto risk driver, rather than doing true risk parity across
+                                   # symbols of differing volatility.
+  risk_per_trade_usd: 100         # max $ lost on a single stopped-out BUY under risk_based sizing
+  max_concurrent_positions: 10    # enforced in execution.py's buy() -- new (non-top-up) BUYs are
+                                   # skipped once open positions are at/above this count
+  min_confidence: 0.6             # Dealer's LLM signal now includes a 0.0-1.0 confidence score
+                                   # (src/dealer/schema.py) -- a BUY below this is skipped
+                                   # (reason: low_confidence) before ever reaching Floor Broker.
+                                   # SELL/HOLD are unaffected. Set to 0.0 to disable this gate
+                                   # entirely (config-only change, no redeploy needed).
+  min_win_rate: 0.30              # trailing automatic-exit (TP/SL) win rate floor -- new BUYs
+                                   # pause (reason: win_rate_throttle) once the win rate over the
+                                   # trailing analyst.track_record_days falls below this. Set just
+                                   # above the trading.slP/tpP breakeven rate (~28.6% at
+                                   # slP=0.98/tpP=1.05) rather than an arbitrary round number --
+                                   # see src/dealer/graph.py's _win_rate_throttle_active().
+  win_rate_min_sample: 5          # minimum completed TP/SL exits required before the win-rate
+                                   # throttle evaluates at all, so a handful of early trades can't
+                                   # trip it on noise
+  win_rate_throttle:
+    enabled: true  # feature gate: config-only change, no redeploy needed
+  win_rate_throttle_scope: symbol  # "symbol" avoids one cluster of bad names pausing all BUYs;
+                                   # set "global" to restore portfolio-wide behavior
+  symbol_stop_cooldown:
+    enabled: true  # blocks same-symbol re-entry after recent stop-loss exits
+  symbol_stop_cooldown_days: 1       # lookback window for same-symbol stop-loss cooldown
+  max_symbol_stop_losses: 1          # one stop-loss in the window pauses new BUYs for that symbol
+  dealer_memory:
+    enabled: true         # include recent same-symbol decisions/execution outcomes in
+                           # Dealer's prompt so it can see failed re-entry patterns
+  symbol_memory_days: 2
+  symbol_memory_limit: 8
+  max_bid_ask_spread_pct: 0.03       # stock BUYs skip when spread/ask exceeds this fraction
+
+options_trading:
+  enabled: false            # top-level feature gate -- flipped on at competition cutover (S9)
+  dte_min: 14
+  dte_max: 45
+  dte_force_close: 3        # force-close regardless of P&L once DTE drops to/below this
+  target_delta_min: 0.30
+  target_delta_max: 0.60
+  min_open_interest: 100    # best-effort liquidity floors: enforced only for contracts where Alpaca's
+  min_volume: 10            # snapshot actually returns OI / volume (it usually omits both). A row
+                           # missing the field is NOT rejected -- a hard gate would block all options
+                           # trading. Also passed to the LLM selector via its prompt.
+  options_slP: 0.50         # synthetic stop-loss, fraction of entry premium
+  options_tpP: 1.75         # synthetic take-profit, fraction of entry premium
+  max_notional_usd: 2000    # hard cap on a single option order's live-quoted notional (qty * mid-price * 100); re-quoted against the market at BUY time, not the LLM-claimed premium (20x strategy.risk_per_trade_usd's default of 100)
+
+eod_flatten:
+  enabled: true   # feature gate: when false, poll_eod_flatten() (src/floor_broker/main.py) short-
+                   # circuits every iteration before touching the clock or Alpaca positions -- off
+                   # by default, opt-in "day trading mode". Toggling this is a config-only change --
+                   # no rebuild/redeploy needed, see src/common/config.py.
+  minutes_before_close: 10   # start flattening open stock positions once Alpaca's live clock
+                              # reports this many minutes (or fewer) until market close. Crypto is
+                              # 24/7 and untouched by this feature.
+  conditional: false   # when true: only flatten if aggregate unrealized P&L across open stock
+                        # positions is >= 0 ("UP"); when P&L is negative ("DOWN"), hold everything
+                        # overnight instead -- except any position held >= max_days_held_loss days,
+                        # which is force-flattened regardless of the aggregate sign. When false
+                        # (default), behaves exactly as today: always flattens everything.
+  max_days_held_loss: 5   # only consulted when conditional: true -- caps how long a losing
+                           # position can ride through consecutive DOWN days before being
+                           # force-flattened regardless of the aggregate P&L sign.
+
+earnings_blackout:
+  enabled: true    # feature gate: when false, discover_candidates() never calls Finnhub and the
+                   # stock screener list is unfiltered by earnings dates -- same config-only-
+                   # toggle story as eod_flatten.enabled. Requires FINNHUB_API_KEY in the
+                   # mlabs-api-keys secret (verified working 2026-08-05). Toggling this is a
+                   # config-only change -- no rebuild/redeploy needed, see src/common/config.py.
+  days_before: 2   # drop a screener candidate if it's reporting earnings within this many
+                   # calendar days from today (anticipation/IV-crush risk pre-report)
+  days_after: 1    # drop a screener candidate if it reported earnings within this many calendar
+                   # days before today (post-report gap risk) -- covers both BMO and AMC
+                   # reporters without permanently excluding a symbol for a full week
+
+macro_blackout:
+  enabled: true    # feature gate: when false, call_floor_broker() never checks the macro
+                   # calendar and BUY entries proceed as today. SELL/HOLD/eod_flatten are never
+                   # affected by this flag, only new BUY entries. Toggling this is a config-only
+                   # change -- no rebuild/redeploy needed. Quarterly quad witching days (3rd
+                   # Friday of Mar/Jun/Sep/Dec) are auto-detected in code
+                   # (src/dealer/graph.py:_is_quad_witching_day) and always included when this
+                   # is enabled -- no config entry needed for those.
+  dates:           # hand-maintained list of other major scheduled macro releases that can move
+                   # the whole market, not just individual stocks. Whole-trading-day granularity
+                   # -- a listed date pauses BUY entries for the entire day, not just around the
+                   # release hour. Sourced 2026-08-05 from federalreserve.gov (FOMC),
+                   # bls.gov/schedule (CPI, Employment Situation/NFP), and bea.gov/news/schedule
+                   # (Personal Income and Outlays/PCE) -- covers the remainder of 2026. Update
+                   # quarterly from those same three sites; also worth adding in a future pass:
+                   # FOMC meeting minutes (3wk after each decision), PPI, ISM Manufacturing/
+                   # Services PMI, GDP (advance/preliminary/final), and the Fed Chair's
+                   # semiannual (Humphrey-Hawkins) testimony.
+    - date: "2026-08-26"
+      label: "PCE release"
+    - date: "2026-09-04"
+      label: "NFP / jobs report"
+    - date: "2026-09-11"
+      label: "CPI release"
+    - date: "2026-09-16"
+      label: "FOMC rate decision"
+    - date: "2026-09-30"
+      label: "PCE release"
+    - date: "2026-10-02"
+      label: "NFP / jobs report"
+    - date: "2026-10-14"
+      label: "CPI release"
+    - date: "2026-10-28"
+      label: "FOMC rate decision"
+    - date: "2026-10-29"
+      label: "PCE release"
+    - date: "2026-11-06"
+      label: "NFP / jobs report"
+    - date: "2026-11-10"
+      label: "CPI release"
+    - date: "2026-11-25"
+      label: "PCE release"
+    - date: "2026-12-04"
+      label: "NFP / jobs report"
+    - date: "2026-12-09"
+      label: "FOMC rate decision"
+    - date: "2026-12-10"
+      label: "CPI release"
+    - date: "2026-12-23"
+      label: "PCE release"
+
+eod_report:
+  schedule: "30 13-16 * * *"   # informational copy of the CronJob's own spec.schedule — checks
+                               # hourly at :30 from 13:30 through 16:30 America/New_York. The
+                               # EOD code uses Alpaca's official close and posts once at close+30min.
+                               # Runs every day so closed days get one Slack notice, not silence.
+
+analyst:
+  schedule: "55 8 * * *"      # informational copy of the CronJob's own spec.schedule — 08:55 America/New_York
+                               # daily (spec.timeZone), ~30min before the 9:30 ET open
+  midday_run:
+    enabled: false    # feature gate: optional second Analyst run at ~12:30pm ET. Not scheduled in
+                      # this repo (no midday CronJob) -- kept as an inert flag. Toggling this is a
+                      # config-only change -- no rebuild/redeploy needed, see src/common/config.py.
+  midday_schedule: "30 12 * * *"   # informational only -- not read by code, and no midday CronJob
+                                    # ships in this repo. Kept for parity with the `schedule` field.
+  news:
+    enabled: true           # feature gate: Alpaca News API + Yahoo RSS headlines as an Analyst input
+  indicators:
+    enabled: true     # feature gate: TAAPI technical indicator data as an Analyst input
+  track_record:
+    enabled: true   # feature gate: Analyst's own recent pick history + Dealer/Floor
+                     # Broker outcomes as an Analyst input (read-only Postgres query)
+  track_record_days: 5        # lookback window in calendar days; excludes today by construction
+                               # -- this node runs before write_portfolio's DB write in the same run
+  position_pnl:
+    enabled: true   # feature gate: live unrealized P&L snapshot of currently-open Alpaca
+                     # positions (stocks + crypto) as an Analyst input -- a fresh
+                     # trading_client.get_all_positions() call each run, point-in-time
+                     # only, not persisted, not compared across days; complements the
+                     # qualitative track_record above rather than replacing it
+  max_universe_size: 10
+  default_budget: 5000
+  max_total_budget_usd: 50000  # last-line-of-defense cap on the sum of every pick's budget in one
+                                # selection -- per-pick budget has no upper bound of its own, and
+                                # the LLM's default_budget above is only a suggestion it can ignore.
+                                # validate_selection() drops trailing picks once the running total
+                                # would exceed this. Default = max_universe_size x default_budget
+                                # (i.e. no headroom beyond "every pick sized at the suggested
+                                # default"), see docs/architecture.md.
+  screener_top_n: 20          # candidates pulled from Alpaca Screener before research/filtering
+  min_price_usd: 1.0          # screener candidates below this price are dropped (movers only -- see
+                               # sources.py; most-actives has no price field to filter on). Sub-$1
+                               # stocks can fail Floor Broker's SL/TP bracket math (see execution.py's
+                               # $0.02 floor/ceiling clamp in bracket_buy_with_SLTP)
+  max_abs_change_pct: 40.0    # drop extreme intraday movers/losers before the LLM; these were the
+                               # main source of repeated stop-out churn
+  min_dollar_volume_usd: 1000000  # when screener volume and reference price are available, require
+                                  # at least this much traded notional
+  excluded_symbol_suffixes: [".W", ".WS", "WS", "WT", "U"]  # avoid warrants/units where possible
+  news_days: 2
+  yahoo_rss_url: "https://feeds.finance.yahoo.com/rss/2.0/headline"
+  indicator_fetch_limit: 15   # candidates (by |change_pct|) that get real TAAPI indicator data,
+                               # capped for TAAPI's 15s/request free-tier rate limit
+  large_cap_symbols: ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "JPM", "V", "JNJ",
+                       "WMT", "PG", "HD", "MA", "XOM"]
+                               # candidate pool for candidate_mix's large-cap bucket below, and always
+                               # gets real indicator data (fetch_indicators) regardless of the day's
+                               # movers ranking. Order doesn't matter, just needs enough names to
+                               # fill large_cap_pct's target count.
+  candidate_mix:
+    enabled: true              # feature gate: compose the stock+crypto candidate pool as a fixed
+                                # percentage mix (large-cap / crypto / today's screener movers)
+                                # instead of letting the day's movers ranking alone decide what the
+                                # LLM sees. false = fall back to today's screener+crypto-only
+                                # discovery. Config-only change, no redeploy needed.
+    pool_size: 20               # total size of the mixed candidate pool when enabled
+    large_cap_pct: 0.40         # fraction of pool_size drawn from large_cap_symbols
+    crypto_pct: 0.30            # fraction of pool_size drawn from crypto (screener movers + the
+                                 # fixed CRYPTO_WATCHLIST); silently redistributed to the other
+                                 # buckets when trading.crypto.enabled is false
+    screener_pct: 0.30          # fraction of pool_size drawn from today's screener movers/most-
+                                 # actives ("weird stocks"), excluding any symbol already in
+                                 # large_cap_symbols
+
+taapi:
+  min_request_interval_secs: 15   # matches the TAAPI Free plan's 1 request/15s cap; lower if you upgrade (Basic ~3s, Pro/Expert ~1s)
+
+# Indicator catalog — unchanged shape from gpt-trader's config.json, TAAPI query params per indicator.
+indicators:
+  - name: rsi
+    properties: { interval: 1h, backtrack: 0, period: 14 }
+  - name: stochrsi
+    properties: { interval: 1h, backtrack: 0, kPeriod: 5, dPeriod: 3, rsiPeriod: 14, stochasticPeriod: 14 }
+  - name: vwap
+    properties: { interval: 1h, backtrack: 0, anchorPeriod: week }
+  - name: vosc
+    properties: { interval: 1h, backtrack: 0, short_period: 5, long_period: 10 }
+  - name: volume
+    properties: { interval: 1h, backtrack: 0 }
+  - name: bbands
+    properties: { interval: 1h, backtrack: 0, period: 20, stddev: 2 }
+  - name: macd
+    properties: { interval: 1h, backtrack: 0, optInFastPeriod: 12, optInSlowPeriod: 26, optInSignalPeriod: 9 }
+  - name: ema
+    properties: { interval: 1h, backtrack: 0, period: 30 }
+  - name: sma
+    properties: { interval: 1h, backtrack: 0, period: 30 }

@@ -1,0 +1,10 @@
+.venv/
+.git/
+notebook.ipynb
+__pycache__/
+*.pyc
+.github/
+k8s/
+README.md
+CLAUDE.md
+LICENSE

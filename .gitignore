@@ -1,0 +1,13 @@
+
+# Per-project JupyterLab kernel venv
+.venv/
+
+__pycache__/
+*.pyc
+
+notebook.ipynb
+.ipynb_checkpoints/
+
+backtests/
+
+.worktrees/
