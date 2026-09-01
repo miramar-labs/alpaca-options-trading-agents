@@ -1,5 +1,12 @@
 # alpaca-options-trading-agents
 
+[![Test and Lint](https://github.com/miramar-labs/alpaca-options-trading-agents/actions/workflows/test-lint.yaml/badge.svg)](https://github.com/miramar-labs/alpaca-options-trading-agents/actions/workflows/test-lint.yaml)
+[![Build and Push](https://github.com/miramar-labs/alpaca-options-trading-agents/actions/workflows/build-push.yaml/badge.svg)](https://github.com/miramar-labs/alpaca-options-trading-agents/actions/workflows/build-push.yaml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Today's P/L](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/today-pl.json)](https://app.alpaca.markets/paper/dashboard/overview)
+[![YTD P/L](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/ytd-pl.json)](https://app.alpaca.markets/paper/dashboard/overview)
+[![Dealer LLM](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/model.json)](config.yaml)
+
 A 3-agent options-trading floor for the **Alpaca AI Trading Agents Hackathon**
 (28 Aug – 4 Sep 2026):
 

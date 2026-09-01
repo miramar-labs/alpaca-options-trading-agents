@@ -1,0 +1,62 @@
+name: P/L Badges
+
+# Computes Today's and YTD aggregate P&L from the competition paper-trading Alpaca account
+# (src/pl_badges/main.py) and commits refreshed shields.io endpoint-badge JSON
+# (badges/today-pl.json, badges/ytd-pl.json) so the two P/L badges in README.md stay live --
+# they're rendered by shields.io fetching those files from raw.githubusercontent.com at view
+# time, so no publicly-reachable service is needed.
+#
+# GitHub Actions cron always runs in UTC -- unlike the k8s CronJobs elsewhere in this repo, there
+# is no `timeZone` field. 21:45 UTC lands at 17:45 ET during EDT (matching eod-report's
+# post-close timing) and 16:45 ET during EST -- both safely after the 4pm ET close, just with up
+# to an hour of seasonal drift.
+#
+# EOD Report also dispatches this workflow directly after a successful Slack recap when the
+# eod-report pod has a GITHUB_WORKFLOW_TOKEN secret with Actions write permission. This schedule
+# remains as a backup in case the dispatch secret is missing or GitHub has a transient failure.
+#
+# Skips the commit (not just the write) on weekends/holidays via the same is_stock_market_open()
+# calendar check eod_report.main() uses, and skips again if the computed P&L didn't change the
+# file content, to avoid empty no-op commits.
+
+on:
+  schedule:
+    - cron: "45 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pl-badges:
+    runs-on: [self-hosted, dgx]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up virtualenv
+        run: |
+          python3.11 -m venv .venv-ci
+          .venv-ci/bin/pip install --upgrade pip
+          .venv-ci/bin/pip install -r requirements.txt
+
+      - name: Generate P/L badges
+        env:
+          ALPACA_PAPER_API_KEY: ${{ secrets.ALPACA_PAPER_API_KEY }}
+          ALPACA_PAPER_API_SECRET: ${{ secrets.ALPACA_PAPER_API_SECRET }}
+        run: .venv-ci/bin/python -m src.pl_badges.main
+
+      - name: Commit refreshed badges
+        run: |
+          if git diff --quiet -- badges/; then
+            echo "No P/L change (or market closed) -- skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/
+          git commit -m "Update P/L badges [skip ci]"
+          git push
+
+      - name: Clean up virtualenv
+        if: always()
+        run: rm -rf .venv-ci

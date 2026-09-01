@@ -24,7 +24,7 @@ def _trigger_pl_badges_workflow() -> None:
         log("⚠️ GITHUB_WORKFLOW_TOKEN not set; skipping P/L badge workflow dispatch")
         return
 
-    repository = os.environ.get("GITHUB_REPOSITORY", "miramar-labs-org/multi-agent-ai-trader")
+    repository = os.environ.get("GITHUB_REPOSITORY", "miramar-labs/alpaca-options-trading-agents")
     workflow_file = os.environ.get("PL_BADGES_WORKFLOW_FILE", "pl-badges.yaml")
     url = f"https://api.github.com/repos/{repository}/actions/workflows/{workflow_file}/dispatches"
     try:

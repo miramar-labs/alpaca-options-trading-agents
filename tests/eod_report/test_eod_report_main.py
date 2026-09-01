@@ -215,7 +215,7 @@ def test_successful_eod_dispatches_pl_badges_workflow(monkeypatch):
     monkeypatch.setattr(main, "trading_client", fake_client)
     monkeypatch.setattr(eod, "trading_client", fake_client)
     monkeypatch.setenv("GITHUB_WORKFLOW_TOKEN", "token-123")
-    monkeypatch.setenv("GITHUB_REPOSITORY", "miramar-labs-org/multi-agent-ai-trader")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "miramar-labs/alpaca-options-trading-agents")
     close = _close_at(16)
     _set_now(monkeypatch, close + timedelta(minutes=30))
     monkeypatch.setattr(main, "get_stock_market_close", lambda day: close)
@@ -233,7 +233,7 @@ def test_successful_eod_dispatches_pl_badges_workflow(monkeypatch):
     assert len(posts) == 1
     args, kwargs = posts[0]
     assert args == (
-        "https://api.github.com/repos/miramar-labs-org/multi-agent-ai-trader/actions/workflows/pl-badges.yaml/dispatches",
+        "https://api.github.com/repos/miramar-labs/alpaca-options-trading-agents/actions/workflows/pl-badges.yaml/dispatches",
     )
     assert kwargs["headers"]["Authorization"] == "Bearer token-123"
     assert kwargs["json"] == {"ref": "main"}
