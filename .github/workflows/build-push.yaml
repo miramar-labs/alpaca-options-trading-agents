@@ -1,0 +1,99 @@
+name: Build and Push
+
+# Builds the service images (Analyst, Dealer, Floor Broker, EOD Report) and pushes
+# them to GHCR. CPU-only, DGX self-hosted runner -- no GPU node/registry logic.
+#
+# Auto-chains off "Test and Lint" (workflow_run) for every push to main that
+# passes tests -- deploy.yaml then auto-chains off this workflow in turn, so
+# main -> live images -> live pods happens with no manual step and nothing
+# with a red test run ever gets built. Manual workflow_dispatch and version
+# tag pushes (v*) still work as standalone triggers, unchanged.
+#
+# GHCR auth uses the built-in GITHUB_TOKEN (permissions: packages: write). The
+# image namespace ghcr.io/miramar-labs/alpaca-options-trading-agents-* is
+# owner-matched to this repo, so no org PAT is needed. Flip the four packages
+# to public after the first run so deploy.yaml's ghcr-pull secret is optional.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  workflow_run:
+    workflows: ["Test and Lint"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_PREFIX: "ghcr.io/miramar-labs/alpaca-options-trading-agents"
+
+jobs:
+  build-push-ghcr:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, dgx]
+    strategy:
+      matrix:
+        include:
+          - name: analyst
+            dockerfile: Dockerfile.analyst
+          - name: dealer
+            dockerfile: Dockerfile.dealer
+          - name: floor-broker
+            dockerfile: Dockerfile.floor-broker
+          - name: eod-report
+            dockerfile: Dockerfile.eod-report
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Set image URI
+        id: image
+        run: |
+          IMAGE_URI="${IMAGE_PREFIX}-${{ matrix.name }}"
+          COMMIT_SHA="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "tag=${COMMIT_SHA::8}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        run: |
+          IMAGE_URI="${{ steps.image.outputs.uri }}"
+          TAG="${{ steps.image.outputs.tag }}"
+          VERSION="${{ steps.image.outputs.version }}"
+
+          BUILD_TAGS=(-t "${IMAGE_URI}:latest" -t "${IMAGE_URI}:${TAG}")
+          [[ -n "$VERSION" ]] && BUILD_TAGS+=(-t "${IMAGE_URI}:${VERSION}")
+
+          docker build -f "${{ matrix.dockerfile }}" "${BUILD_TAGS[@]}" .
+          docker push "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:${TAG}"
+          if [[ -n "$VERSION" ]]; then
+            docker push "${IMAGE_URI}:${VERSION}"
+            echo "Pushed ${IMAGE_URI}:{latest,${TAG},${VERSION}}"
+          else
+            echo "Pushed ${IMAGE_URI}:{latest,${TAG}}"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "## Build and Push Complete: ${{ matrix.name }}"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Service | \`${{ matrix.name }}\` |"
+            echo "| Registry | GHCR |"
+            echo "| Image | \`${{ steps.image.outputs.uri }}:${{ steps.image.outputs.tag }}\` |"
+            if [[ -n "${{ steps.image.outputs.version }}" ]]; then
+              echo "| Version | \`${{ steps.image.outputs.version }}\` |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

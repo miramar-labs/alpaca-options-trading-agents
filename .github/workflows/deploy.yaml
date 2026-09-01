@@ -1,0 +1,168 @@
+name: Deploy
+
+# Deploys the trading floor (Analyst CronJob, Dealer Deployment, Floor Broker
+# Deployment+Service, EOD Report CronJob) to K3s on the DGX. CPU-only -- no GPU
+# node handling, no cloud registry, no WIF.
+#
+# The mlabs-api-keys secret (broker/LLM API credentials) is NOT created here --
+# it must already exist in the namespace (see k8s/secrets.example.yaml).
+# The portfolio and buy-kill-switch ConfigMaps are seeded once and never clobbered on re-deploy.
+#
+# Auto-chains off "Build and Push" (workflow_run) for every push to main that
+# passes tests and builds successfully -- deploys the exact commit's
+# <8-char-sha> image tag that build-push.yaml just pushed (not :latest, so
+# there's no race if another push lands mid-deploy). This closes the loop
+# started in test-lint.yaml: main -> tests pass -> images built -> pods
+# redeployed, with no manual step. Manual workflow_dispatch still works
+# standalone (e.g. to roll back to an older tag or force a redeploy of :latest).
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy for all services"
+        required: false
+        default: latest
+  workflow_run:
+    workflows: ["Build and Push"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  NAMESPACE: "alpaca-options-trader"
+  IMAGE_PREFIX: "ghcr.io/miramar-labs/alpaca-options-trading-agents"
+
+jobs:
+  deploy-dgx:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, dgx]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up kubeconfig
+        run: echo "KUBECONFIG=${HOME}/.kube/config" >> "${GITHUB_ENV}"
+
+      - name: Ensure namespace
+        run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply --validate=false -f -
+
+      - name: Ensure GHCR pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
+            -n "$NAMESPACE" \
+            --dry-run=client -o yaml | kubectl apply --validate=false -f -
+
+      - name: Ensure mlabs-api-keys secret
+        run: |
+          kubectl get secret mlabs-api-keys -n "$NAMESPACE" > /dev/null 2>&1 || {
+            echo "ERROR: secret mlabs-api-keys not found in namespace $NAMESPACE."
+            echo "Create it manually first -- see k8s/secrets.example.yaml for the required keys."
+            exit 1
+          }
+
+      - name: Sync optional GitHub workflow token
+        env:
+          EOD_GITHUB_WORKFLOW_TOKEN: ${{ secrets.EOD_GITHUB_WORKFLOW_TOKEN }}
+        run: |
+          if [[ -z "${EOD_GITHUB_WORKFLOW_TOKEN}" ]]; then
+            echo "EOD_GITHUB_WORKFLOW_TOKEN not configured; EOD will skip P/L badge dispatch (pl-badges cron still refreshes)."
+            exit 0
+          fi
+          TOKEN_B64="$(printf '%s' "${EOD_GITHUB_WORKFLOW_TOKEN}" | base64 -w0)"
+          kubectl patch secret mlabs-api-keys \
+            -n "$NAMESPACE" \
+            --type merge \
+            -p "{\"data\":{\"GITHUB_WORKFLOW_TOKEN\":\"${TOKEN_B64}\"}}"
+
+      - name: Apply RBAC
+        run: kubectl apply --validate=false -f k8s/rbac.yaml
+
+      - name: Seed portfolio ConfigMap (once)
+        run: |
+          kubectl get configmap portfolio -n "$NAMESPACE" > /dev/null 2>&1 || \
+            kubectl apply --validate=false -f k8s/portfolio-configmap.yaml
+
+      - name: Seed buy-kill-switch ConfigMap (once)
+        run: |
+          kubectl get configmap buy-kill-switch -n "$NAMESPACE" > /dev/null 2>&1 || \
+            kubectl apply --validate=false -f k8s/buy-kill-switch-configmap.yaml
+
+      - name: Build image URIs
+        id: images
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            FULL_SHA="${{ github.event.workflow_run.head_sha }}"
+            TAG="${FULL_SHA::8}"
+          else
+            TAG="${{ inputs.image_tag }}"
+          fi
+          echo "analyst=${IMAGE_PREFIX}-analyst:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "dealer=${IMAGE_PREFIX}-dealer:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "floor_broker=${IMAGE_PREFIX}-floor-broker:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "eod_report=${IMAGE_PREFIX}-eod-report:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Substitute and apply k3s manifests
+        run: |
+          ANALYST_URI="${{ steps.images.outputs.analyst }}"
+          DEALER_URI="${{ steps.images.outputs.dealer }}"
+          FLOOR_BROKER_URI="${{ steps.images.outputs.floor_broker }}"
+          EOD_REPORT_URI="${{ steps.images.outputs.eod_report }}"
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            COMMIT_SHA="${{ github.sha }}"
+          fi
+
+          for MANIFEST in \
+            k8s/analyst-cronjob-k3s.yaml \
+            k8s/dealer-deployment-k3s.yaml \
+            k8s/floor-broker-deployment-k3s.yaml \
+            k8s/floor-broker-service-k3s.yaml \
+            k8s/eod-report-cronjob-k3s.yaml
+          do
+            echo "Applying ${MANIFEST}..."
+            sed "s|GHCR_IMAGE_ANALYST_PLACEHOLDER|${ANALYST_URI}|g" "${MANIFEST}" \
+              | sed "s|GHCR_IMAGE_DEALER_PLACEHOLDER|${DEALER_URI}|g" \
+              | sed "s|GHCR_IMAGE_FLOOR_BROKER_PLACEHOLDER|${FLOOR_BROKER_URI}|g" \
+              | sed "s|GHCR_IMAGE_EOD_REPORT_PLACEHOLDER|${EOD_REPORT_URI}|g" \
+              | sed "s|DEPLOY_SHA_PLACEHOLDER|${COMMIT_SHA}|g" \
+              | kubectl apply --validate=false -f -
+          done
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/dealer -n "$NAMESPACE" --timeout=300s
+          kubectl rollout status deployment/floor-broker -n "$NAMESPACE" --timeout=300s
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/floor-broker 18000:8000 -n "$NAMESPACE" &
+          PF_PID=$!
+          trap "kill $PF_PID 2>/dev/null || true" EXIT
+          sleep 5
+
+          curl -sf http://localhost:18000/healthz
+          echo "Floor Broker healthz OK"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Deploy: $NAMESPACE (DGX K3s)"
+            echo "| Service | Image |"
+            echo "|---|---|"
+            echo "| Analyst | \`${{ steps.images.outputs.analyst }}\` |"
+            echo "| Dealer | \`${{ steps.images.outputs.dealer }}\` |"
+            echo "| Floor Broker | \`${{ steps.images.outputs.floor_broker }}\` |"
+            echo "| EOD Report | \`${{ steps.images.outputs.eod_report }}\` |"
+            echo ""
+            echo "Namespace: \`$NAMESPACE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
