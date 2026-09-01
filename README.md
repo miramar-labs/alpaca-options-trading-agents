@@ -7,17 +7,40 @@
 [![YTD P/L](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/ytd-pl.json)](https://app.alpaca.markets/paper/dashboard/overview)
 [![Dealer LLM](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/model.json)](config.yaml)
 
-A 3-agent options-trading floor for the **Alpaca AI Trading Agents Hackathon**
-(28 Aug – 4 Sep 2026):
+A 3-agent options-trading floor built for the **Alpaca AI Trading Agents Hackathon**
+(lablab.ai, 28 Aug – 4 Sep 2026), trading live on Alpaca's competition $100k paper account.
 
 - **Analyst** — each morning, screens the market and picks the day's tradeable universe.
-- **Dealer** — polls each symbol for a BUY / SELL / HOLD signal, then uses an
-  Alpaca MCP tool-calling loop to select the specific option contract to trade.
-- **Floor Broker** — a FastAPI executor that places the order on Alpaca and
-  manages synthetic stop-loss / take-profit exits.
+- **Dealer** — polls each symbol for a BUY / SELL / HOLD signal, then uses an **Alpaca MCP**
+  tool-calling loop to browse the live option chain and pick a specific contract to trade.
+- **Floor Broker** — a FastAPI executor that re-validates the pick, places the order on
+  Alpaca, and manages synthetic stop-loss / take-profit / expiration exits (Alpaca has no
+  server-side brackets for options).
 
-Risk gates, an end-of-day Slack recap, and live P/L + model badges round it out.
-The stack runs on the DGX k3s cluster against an Alpaca paper account.
+Layered risk gates (confidence threshold, macro-event blackout, stop-loss cooldown, win-rate
+throttle, daily halt, notional cap, a runtime kill switch), a daily end-of-day Slack recap, and
+live P/L + model badges round it out. See [`docs/hackathon-writeup.md`](docs/hackathon-writeup.md)
+for the submission narrative and [`docs/architecture.md`](docs/architecture.md) for full
+technical detail.
+
+## Repo layout
+
+```
+alpaca-options-trading-agents/
+├── config.yaml           # single source of config for every agent -- fetched live from GitHub, not baked into images
+├── Dockerfile.*           # one per workload
+├── k8s/                   # CronJobs, Deployments, Service, RBAC, ConfigMaps, secrets.example.yaml
+├── src/
+│   ├── common/            # Alpaca client, config loader, logger, Slack, Postgres, portfolio I/O
+│   ├── analyst/            # CronJob -- picks the tradeable universe
+│   ├── dealer/              # Deployment -- BUY/HOLD/SELL signal + Alpaca MCP contract selection
+│   ├── floor_broker/        # Deployment+Service -- order execution
+│   ├── eod_report/           # CronJob -- daily Slack recap
+│   ├── pl_badges/             # README P/L badge refresh (GitHub Actions)
+│   └── model_badge/           # README "Dealer LLM" badge refresh (GitHub Actions)
+├── tests/                 # mirrors src/
+└── docs/                  # architecture.md, hackathon-writeup.md
+```
 
 ## Development
 
@@ -28,5 +51,16 @@ python3.12 -m venv .venv
 .venv/bin/ruff check .
 ```
 
-More detail — architecture, deployment, and the hackathon write-up — lands in
-`docs/` as the build progresses.
+## Deployment
+
+Runs on a self-hosted Kubernetes (k3s) cluster, in namespace `alpaca-options-trader`. A GitHub
+Actions chain on a self-hosted runner handles the whole path: push → test + lint → (on `main`)
+build + push 4 images to GHCR → (on a green build) roll out to the cluster. See
+[`k8s/secrets.example.yaml`](k8s/secrets.example.yaml) for the one secret every workload needs
+(`mlabs-api-keys`: Alpaca creds, TAAPI/Finnhub/LangSmith keys, the Postgres connection string,
+and a Slack webhook) and [`docs/architecture.md`](docs/architecture.md#secrets) for what each
+key is used for.
+
+## License
+
+[MIT](LICENSE).
