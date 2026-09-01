@@ -1116,6 +1116,48 @@ def test_call_floor_broker_option_posts_to_execute_option(monkeypatch):
     assert result["execution_result"]["status"] == "submitted"
 
 
+def test_call_floor_broker_option_sizes_off_dedicated_option_risk_budget(monkeypatch):
+    """options_trading.risk_per_trade_usd, when set, sizes the option order instead of the
+    equity-tuned strategy.risk_per_trade_usd -- otherwise real $300-900/contract premiums floor
+    every order to qty 0 (strategy value is ~$100)."""
+    monkeypatch.setattr(graph.slack, "notify_floor_broker_result", lambda *a, **k: None)
+    monkeypatch.setattr(graph.db, "record_floor_broker_event", lambda *a, **k: None)
+    monkeypatch.setattr(graph.db, "record_dealer_decision", lambda *a, **k: None)
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"status": "submitted", "detail": "option buy order submitted: order-1"}
+
+    def _fake_post(url, json, timeout):
+        captured["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr(graph.requests, "post", _fake_post)
+    monkeypatch.setattr(graph, "_option_contract_already_exposed", lambda cfg, sym: False)
+    cfg = _option_cfg(risk_per_trade_usd=1500)  # strategy.risk_per_trade_usd stays 100
+    state = {
+        **_state("rsi: 71.2"),
+        "signal": {"action": "BUY", "confidence": 0.9, "reasoning": "r"},
+        "option_pick": {
+            "contract_symbol": "AAPL250117C00200000",
+            "strike": 200.0,
+            "expiration": _far_expiration(20),
+            "right": "call",
+            "delta": 0.45,
+            "premium": 4.72,
+            "reasoning": "r",
+        },
+    }
+
+    result = graph.call_floor_broker_option(state, cfg)
+
+    assert captured["json"]["qty"] == 3  # floor(1500 / (4.72 * 100)) == 3; strategy's 100 -> 0
+    assert result["execution_result"]["status"] == "submitted"
+
+
 def test_call_floor_broker_option_records_dealer_decision(monkeypatch):
     monkeypatch.setattr(graph.slack, "notify_floor_broker_result", lambda *a, **k: None)
     monkeypatch.setattr(graph.db, "record_floor_broker_event", lambda *a, **k: None)

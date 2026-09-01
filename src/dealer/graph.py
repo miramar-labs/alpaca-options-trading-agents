@@ -863,22 +863,27 @@ def call_floor_broker_option(state: DealerState, cfg) -> DealerState:
         graph_slack_and_record(state, action, result)
         return {**state, "execution_result": result}
 
-    if not cfg.strategy.risk_per_trade_usd:
+    # Option premiums run $300-900/contract, so the stock-sized strategy.risk_per_trade_usd (~$100,
+    # tuned as "max $ lost on a stopped-out equity BUY") floors every option order to qty 0. Size
+    # options off their own budget knob when set, falling back to the shared one. max_notional_usd
+    # is still the hard ceiling re-checked at BUY time in the floor broker.
+    option_risk_usd = cfg.options_trading.get("risk_per_trade_usd") or cfg.strategy.risk_per_trade_usd
+    if not option_risk_usd:
         result = {
             "status": "skipped",
             "reason": "risk_per_trade_usd_not_configured",
-            "detail": "strategy.risk_per_trade_usd is not configured",
+            "detail": "neither options_trading.risk_per_trade_usd nor strategy.risk_per_trade_usd is configured",
         }
         graph_slack_and_record(state, action, result)
         return {**state, "execution_result": result}
 
     premium = option_pick["premium"]
-    qty = int(cfg.strategy.risk_per_trade_usd // (premium * 100)) if premium > 0 else 0
+    qty = int(option_risk_usd // (premium * 100)) if premium > 0 else 0
     if qty < 1:
         result = {
             "status": "skipped",
             "reason": "qty_zero",
-            "detail": f"risk_per_trade_usd={cfg.strategy.risk_per_trade_usd} affords 0 contracts at premium ${premium}",
+            "detail": f"option_risk_usd={option_risk_usd} affords 0 contracts at premium ${premium}",
         }
         graph_slack_and_record(state, action, result)
         return {**state, "execution_result": result}

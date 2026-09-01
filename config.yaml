@@ -123,7 +123,13 @@ options_trading:
                            # trading. Also passed to the LLM selector via its prompt.
   options_slP: 0.50         # synthetic stop-loss, fraction of entry premium
   options_tpP: 1.75         # synthetic take-profit, fraction of entry premium
-  max_notional_usd: 2000    # hard cap on a single option order's live-quoted notional (qty * mid-price * 100); re-quoted against the market at BUY time, not the LLM-claimed premium (20x strategy.risk_per_trade_usd's default of 100)
+  risk_per_trade_usd: 1500  # option-order budget: qty = floor(this / (premium * 100)). Decoupled from
+                            # strategy.risk_per_trade_usd (~$100, an equity stop-loss figure) because
+                            # option premiums run $300-900/contract and would floor every order to
+                            # qty 0. ~2-4 contracts at typical premiums; max_notional_usd is the hard
+                            # ceiling, re-quoted at BUY time. Falls back to strategy.risk_per_trade_usd
+                            # if unset.
+  max_notional_usd: 2000    # hard cap on a single option order's live-quoted notional (qty * mid-price * 100); re-quoted against the market at BUY time, not the LLM-claimed premium
 
 eod_flatten:
   enabled: true   # feature gate: when false, poll_eod_flatten() (src/floor_broker/main.py) short-
