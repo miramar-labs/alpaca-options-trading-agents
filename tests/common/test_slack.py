@@ -1,8 +1,14 @@
 import re
+from types import SimpleNamespace
 
 from src.common import slack
 
 _TIMESTAMP_RE = r"\d{2}:\d{2}:\d{2} (AM|PM)"
+
+
+class _FakeResponse:
+    status_code = 200
+    text = "ok"
 
 
 def test_notify_morning_report_omits_closed_market_banner_when_market_is_open(monkeypatch):
@@ -318,3 +324,37 @@ def test_notify_analyst_explain_includes_date_narrative_and_timestamp(monkeypatc
     assert "2026-08-04" in text
     assert "MGN was up 5% on earnings; Dealer bought, filled at $4.50." in text
     assert re.search(_TIMESTAMP_RE, text)
+
+
+def test_escape_freetext_swaps_tilde_for_the_approx_sign():
+    # Slack's mrkdwn treats a *pair* of tildes as strikethrough delimiters. LLM-authored
+    # reasoning routinely writes "~47.7" for "approximately 47.7", and a paragraph with two such
+    # values silently struck through everything between them.
+    assert slack._escape_freetext("RSI (~47.7) vs SMA (~52.3)") == "RSI (≈47.7) vs SMA (≈52.3)"
+
+
+def test_post_neutralizes_tildes_before_sending_to_slack(monkeypatch):
+    monkeypatch.setattr(slack, "_WEBHOOK_URL", "http://example.invalid/hook")
+    monkeypatch.setattr(slack, "load_config", lambda: SimpleNamespace(slack=SimpleNamespace(enabled=True)))
+    sent = {}
+    monkeypatch.setattr(
+        slack.requests,
+        "post",
+        lambda url, json, timeout: sent.update(json) or _FakeResponse(),
+    )
+
+    slack._post("RSI (~47.7) vs SMA (~52.3)")
+
+    assert "~" not in sent["text"]
+    assert sent["text"] == "RSI (≈47.7) vs SMA (≈52.3)"
+
+
+def test_post_does_not_send_when_slack_disabled(monkeypatch):
+    monkeypatch.setattr(slack, "_WEBHOOK_URL", "http://example.invalid/hook")
+    monkeypatch.setattr(slack, "load_config", lambda: SimpleNamespace(slack=SimpleNamespace(enabled=False)))
+    called = []
+    monkeypatch.setattr(slack.requests, "post", lambda *a, **k: called.append(1))
+
+    slack._post("~ignored~")
+
+    assert called == []

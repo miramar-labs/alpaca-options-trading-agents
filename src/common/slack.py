@@ -39,11 +39,21 @@ def _format_fill_time(iso_time: str) -> str:
     return dt.astimezone(pytz.timezone("US/Eastern")).strftime("%I:%M %p %Z")
 
 
+def _escape_freetext(text: str) -> str:
+    """LLM-authored reasoning/rationale/narrative routinely writes "~47" or "~$150" for
+    "approximately" -- Slack's mrkdwn treats a *pair* of tildes as strikethrough delimiters, so
+    any message with two or more of them (common: two indicator values in one paragraph) silently
+    strikes through everything in between. Swap the character for the actual approx sign, which
+    reads at least as correctly and carries no mrkdwn meaning to Slack."""
+    return text.replace("~", "≈")
+
+
 def _post(text: str) -> None:
     """Fire-and-forget POST to the Slack incoming webhook. Never raises -- a Slack
     outage must never affect a trading decision."""
     if not load_config().slack.enabled or not _WEBHOOK_URL:
         return
+    text = _escape_freetext(text)
     try:
         resp = requests.post(_WEBHOOK_URL, json={"text": text}, timeout=10)
         if resp.status_code != 200:
