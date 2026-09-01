@@ -1,21 +1,15 @@
 name: Test and Lint
 
 # Runs the pytest suite and ruff lint checks on every push and pull request. Self-hosted DGX
-# runner, matching build-push/deploy/undeploy — installs its own throwaway venv from
+# runner (dgx-alpaca), matching build-push/deploy -- installs its own throwaway venv from
 # requirements-dev.txt (which pins the same ruff version used locally) rather than relying on
 # any tool already on the runner's PATH, so this job is reproducible independent of how the
-# runner host happens to be provisioned. `python3-venv` itself is baked into the shared
-# mlabs-runner image (miramar-platform-gcp/mlabs-runner/Dockerfile) rather than apt-installed
-# here on every run -- that used to require sudo/root, modify the runner host, and add avoidable
-# runtime on every job (see docs/ROADMAP.md's P0.12 entry).
+# runner host happens to be provisioned.
 #
-# ruff format --check is intentionally NOT run here yet — there is pre-existing formatting
-# drift across the repo that hasn't been cleaned up (see docs/architecture.md), so enforcing it
-# in CI would fail on unrelated files. ruff check (lint rules) has no such drift and is safe to
-# gate on.
+# ruff format --check is intentionally NOT run here -- only ruff check (lint rules).
 #
-# Runs on Python 3.11 because the current self-hosted runner image does not provide python3.12.
-# Dockerfile.* still runs production services on Python 3.12.
+# `python3` on the runner is pyenv's global (3.12.2), the same interpreter the local dev venv
+# and Dockerfile.* production images use. (The runner has no `python3.11` shim.)
 
 on:
   push:
@@ -32,7 +26,7 @@ jobs:
 
       - name: Set up virtualenv
         run: |
-          python3.11 -m venv .venv-ci
+          python3 -m venv .venv-ci
           .venv-ci/bin/pip install --upgrade pip
           .venv-ci/bin/pip install -r requirements-dev.txt
 

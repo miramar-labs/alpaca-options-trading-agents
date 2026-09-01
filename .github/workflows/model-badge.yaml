@@ -23,7 +23,7 @@ jobs:
 
       - name: Set up virtualenv
         run: |
-          python3.11 -m venv .venv-ci
+          python3 -m venv .venv-ci
           .venv-ci/bin/pip install --upgrade pip
           .venv-ci/bin/pip install -r requirements.txt
 
