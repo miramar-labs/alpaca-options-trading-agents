@@ -9,6 +9,9 @@
 
 A 3-agent options-trading floor built for the **Alpaca AI Trading Agents Hackathon**
 (lablab.ai, 28 Aug – 4 Sep 2026), trading live on Alpaca's competition $100k paper account.
+Every agent's LLM call runs as **local inference on an NVIDIA DGX Spark**, via Ollama — no
+external LLM API. The whole stack — agents, LLM inference, Postgres, and CI/CD — runs on that
+one machine; nothing but Alpaca/TAAPI/Finnhub/Slack/GitHub traffic ever leaves it.
 
 - **Analyst** — each morning, screens the market and picks the day's tradeable universe.
 - **Dealer** — polls each symbol for a BUY / SELL / HOLD signal, then uses an **Alpaca MCP**
@@ -53,13 +56,21 @@ python3.12 -m venv .venv
 
 ## Deployment
 
-Runs on a self-hosted Kubernetes (k3s) cluster, in namespace `alpaca-options-trader`. A GitHub
-Actions chain on a self-hosted runner handles the whole path: push → test + lint → (on `main`)
-build + push 4 images to GHCR → (on a green build) roll out to the cluster. See
-[`k8s/secrets.example.yaml`](k8s/secrets.example.yaml) for the one secret every workload needs
-(`mlabs-api-keys`: Alpaca creds, TAAPI/Finnhub/LangSmith keys, the Postgres connection string,
-and a Slack webhook) and [`docs/architecture.md`](docs/architecture.md#secrets) for what each
-key is used for.
+Runs entirely on a single **NVIDIA DGX Spark**, self-hosted, no cloud compute involved. That
+one machine hosts:
+
+- a **k3s** Kubernetes cluster running all four agent workloads (namespace
+  `alpaca-options-trader`),
+- **Ollama**, serving `qwen3.6:35b-a3b` for every Analyst/Dealer decision and the MCP contract
+  selector — local inference, not an external LLM API,
+- the shared **Postgres** instance backing the audit/persistence tables, and
+- a self-hosted **GitHub Actions** runner that handles the whole CI/CD path: push → test + lint
+  → (on `main`) build + push 4 images to GHCR → (on a green build) roll out to the cluster.
+
+See [`k8s/secrets.example.yaml`](k8s/secrets.example.yaml) for the one secret every workload
+needs (`mlabs-api-keys`: Alpaca creds, TAAPI/Finnhub/LangSmith keys, the Postgres connection
+string, and a Slack webhook) and [`docs/architecture.md`](docs/architecture.md#secrets) for
+what each key is used for.
 
 ## License
 
