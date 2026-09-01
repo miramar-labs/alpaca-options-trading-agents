@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analyst
+  namespace: alpaca-options-trader
+spec:
+  # 08:55 America/New_York -- lands the Morning Report ~30min before the 9:30 ET open (5min
+  # buffer for the ~5min compile time, dominated by the TAAPI indicator-fetch throttle). timeZone
+  # (not a fixed UTC offset) keeps this correct across DST without manual adjustment.
+  # Matches config.yaml's analyst.schedule -- keep both in sync.
+  schedule: "55 8 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1  # a failed research run should surface, not silently retry-storm
+      template:
+        metadata:
+          labels:
+            app: analyst
+        spec:
+          serviceAccountName: alpaca-options-trader-configmap-reader
+          imagePullSecrets:
+            - name: ghcr-pull
+          restartPolicy: Never
+          containers:
+            - name: analyst
+              image: GHCR_IMAGE_ANALYST_PLACEHOLDER
+              env:
+                # portfolio_state.py reads POD_NAMESPACE to locate the portfolio ConfigMap;
+                # the downward API supplies the real namespace so that module needs no code change.
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              envFrom:
+                - secretRef:
+                    name: mlabs-api-keys
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"

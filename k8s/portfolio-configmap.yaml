@@ -1,0 +1,12 @@
+# Seed/empty portfolio ConfigMap. Apply once at initial namespace setup only —
+# `kubectl apply` on this file will overwrite `data` with the empty seed below,
+# clobbering whatever the Analyst/Dealer have since written. Do not include this
+# in the routine deploy workflow.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portfolio
+  namespace: alpaca-options-trader
+data:
+  portfolio.json: |
+    {"generated_at": "1970-01-01T00:00:00Z", "symbols": []}

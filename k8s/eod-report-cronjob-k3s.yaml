@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: eod-report
+  namespace: alpaca-options-trader
+spec:
+  # Checks daily at :30 from 13:30 through 16:30 America/New_York. main() uses Alpaca's
+  # official calendar close and sends only once when close+30min has passed, so normal 16:00
+  # closes report at 16:30 and 13:00 early closes report at 13:30.
+  # Runs daily (not just Mon-Fri) -- main() posts one Slack market-closed notice on
+  # weekends/holidays. Matches config.yaml's eod_report.schedule -- keep both in sync.
+  schedule: "30 13-16 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1  # a failed report run should surface, not silently retry-storm
+      template:
+        metadata:
+          labels:
+            app: eod-report
+        spec:
+          imagePullSecrets:
+            - name: ghcr-pull
+          restartPolicy: Never
+          containers:
+            - name: eod-report
+              image: GHCR_IMAGE_EOD_REPORT_PLACEHOLDER
+              envFrom:
+                - secretRef:
+                    name: mlabs-api-keys
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dealer
+  namespace: alpaca-options-trader
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # avoids two Dealer pods racing to read/act on the same portfolio during a rolling update
+  selector:
+    matchLabels:
+      app: dealer
+  template:
+    metadata:
+      labels:
+        app: dealer
+      annotations:
+        deploy.miramar/commit-sha: DEPLOY_SHA_PLACEHOLDER  # forces a rollout even when the image tag string (":latest") doesn't change
+    spec:
+      serviceAccountName: alpaca-options-trader-configmap-reader
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: dealer
+          image: GHCR_IMAGE_DEALER_PLACEHOLDER
+          env:
+            # portfolio_state.py / kill_switch.py read POD_NAMESPACE to locate their ConfigMaps;
+            # the downward API supplies the real namespace so those modules need no code change.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          envFrom:
+            - secretRef:
+                name: mlabs-api-keys
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"  # Dealer forks the MCP-server subprocess (2nd Python) during _select_option_contract_async; 512Mi memcg-OOM-killed it 2026-08-27

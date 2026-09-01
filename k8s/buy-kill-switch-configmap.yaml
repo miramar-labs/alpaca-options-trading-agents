@@ -1,0 +1,16 @@
+# Seed ConfigMap for the runtime BUY kill switch (ROADMAP P0.5). Apply once at initial
+# namespace setup only — `kubectl apply` on this file will overwrite `data` back to "false",
+# clobbering an operator's activation. Do not include this in the routine deploy workflow.
+#
+# To activate (block new BUY orders, SELL still permitted):
+#   kubectl patch configmap buy-kill-switch -n alpaca-options-trader --type merge -p '{"data":{"active":"true"}}'
+#
+# To deactivate:
+#   kubectl patch configmap buy-kill-switch -n alpaca-options-trader --type merge -p '{"data":{"active":"false"}}'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buy-kill-switch
+  namespace: alpaca-options-trader
+data:
+  active: "false"

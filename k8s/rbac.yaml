@@ -1,0 +1,35 @@
+# Shared by the Analyst CronJob (writes the portfolio ConfigMap), the Dealer
+# Deployment (reads it), and the Floor Broker Deployment (reads the
+# buy-kill-switch ConfigMap, ROADMAP P0.5) — one ServiceAccount/Role/RoleBinding
+# rather than near-duplicate RBAC objects per workload, since all three only
+# ever touch ConfigMaps in this same namespace. EOD Report does not use this
+# ServiceAccount — it never touches the k8s API.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alpaca-options-trader-configmap-reader
+  namespace: alpaca-options-trader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alpaca-options-trader-configmap-reader
+  namespace: alpaca-options-trader
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "patch", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alpaca-options-trader-configmap-reader
+  namespace: alpaca-options-trader
+subjects:
+  - kind: ServiceAccount
+    name: alpaca-options-trader-configmap-reader
+    namespace: alpaca-options-trader
+roleRef:
+  kind: Role
+  name: alpaca-options-trader-configmap-reader
+  apiGroup: rbac.authorization.k8s.io

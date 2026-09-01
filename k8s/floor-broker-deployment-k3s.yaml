@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: floor-broker
+  namespace: alpaca-options-trader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: floor-broker
+  template:
+    metadata:
+      labels:
+        app: floor-broker
+      annotations:
+        deploy.miramar/commit-sha: DEPLOY_SHA_PLACEHOLDER  # forces a rollout even when the image tag string (":latest") doesn't change
+    spec:
+      serviceAccountName: alpaca-options-trader-configmap-reader
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: floor-broker
+          image: GHCR_IMAGE_FLOOR_BROKER_PLACEHOLDER
+          env:
+            # portfolio_state.py / kill_switch.py read POD_NAMESPACE to locate their ConfigMaps;
+            # the downward API supplies the real namespace so those modules need no code change.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          envFrom:
+            - secretRef:
+                name: mlabs-api-keys
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
