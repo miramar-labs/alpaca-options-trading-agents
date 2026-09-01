@@ -16,5 +16,10 @@ langchain
 langchain-openai
 langgraph
 langsmith
-alpaca-mcp-server
-langchain-mcp-adapters
+# Pinned: these two drive the Dealer's option-selection path, and both have silently
+# broken it before with no error signal -- alpaca-mcp-server by adding the tool-output
+# security envelope, langchain-mcp-adapters by returning results as content-block lists
+# instead of strings. src/dealer/option_chain.py (_unwrap_security_envelope, mcp_text)
+# defends against both shapes, but bump these deliberately, not incidentally.
+alpaca-mcp-server==2.3.0
+langchain-mcp-adapters==0.3.2

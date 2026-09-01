@@ -2,7 +2,9 @@ import json
 
 from src.dealer.option_chain import (
     compact_tool_result,
+    ensure_option_feed,
     estimate_tokens,
+    mcp_text,
     parse_occ_symbol,
     parse_option_chain,
 )
@@ -123,6 +125,50 @@ def test_compact_non_json_truncates_to_max_chars():
 def test_compact_unknown_tool_passes_through_truncation():
     out = compact_tool_result("get_account", "y" * 20000, max_chars=6000)
     assert len(out) <= 6100
+
+
+def test_mcp_text_joins_langchain_content_blocks():
+    # langchain-mcp-adapters >=0.3 returns tool results as a list of content blocks, not a string
+    blocks = [{"type": "text", "text": '{"snapshots": {}}'}]
+    assert mcp_text(blocks) == '{"snapshots": {}}'
+
+
+def test_mcp_text_passes_a_string_through():
+    assert mcp_text('{"a": 1}') == '{"a": 1}'
+
+
+def test_parse_option_chain_via_mcp_text_recovers_rows_from_block_list():
+    envelope = {
+        "_alpaca_mcp_security": {"trust": "untrusted_tool_output"},
+        "data": {"snapshots": {"AAPL250117C00200000": {
+            "latestQuote": {"bp": 3.0, "ap": 3.4}, "greeks": {"delta": 0.45}}}},
+    }
+    blocks = [{"type": "text", "text": json.dumps(envelope)}]
+    rows = parse_option_chain(mcp_text(blocks))
+    assert len(rows) == 1 and rows[0]["delta"] == 0.45 and rows[0]["bid"] == 3.0
+
+
+def test_ensure_option_feed_forces_feed_on_option_data_tools():
+    for name in ("get_option_chain", "get_option_snapshot", "get_option_latest_quote"):
+        out = ensure_option_feed(name, {"symbols": "AAPL250117C00200000"})
+        assert out["feed"] == "indicative"
+
+
+def test_ensure_option_feed_overrides_an_opra_arg_from_the_llm():
+    out = ensure_option_feed("get_option_chain", {"underlying_symbol": "AAPL", "feed": "opra"}, "indicative")
+    assert out["feed"] == "indicative"
+
+
+def test_ensure_option_feed_honours_explicit_feed_value():
+    out = ensure_option_feed("get_option_chain", {"underlying_symbol": "AAPL"}, "opra")
+    assert out["feed"] == "opra"
+
+
+def test_ensure_option_feed_is_noop_for_other_tools_and_does_not_mutate():
+    args = {"symbol": "AAPL"}
+    out = ensure_option_feed("get_stock_snapshot", args)
+    assert out == {"symbol": "AAPL"} and "feed" not in out
+    assert args == {"symbol": "AAPL"}  # caller's dict untouched
 
 
 def test_estimate_tokens_is_content_chars_over_four():

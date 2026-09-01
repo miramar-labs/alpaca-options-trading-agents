@@ -107,6 +107,11 @@ strategy:
 
 options_trading:
   enabled: false            # top-level feature gate -- flipped on at competition cutover (S9)
+  data_feed: indicative     # Alpaca option market-data feed for the Dealer's chain/quote lookups.
+                            # "indicative" is the free (15-min delayed) feed; "opra" is real-time
+                            # but needs a paid OPRA subscription -- the paper account has none,
+                            # so "opra" 403s and starves the whole option-pick path. Set to "opra"
+                            # only if alpaca.live is ever pointed at an OPRA-entitled account.
   dte_min: 14
   dte_max: 45
   dte_force_close: 3        # force-close regardless of P&L once DTE drops to/below this

@@ -18,6 +18,13 @@ import re
 _OCC_RE = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$")
 _CHAIN_TOOLS = {"get_option_chain", "get_option_snapshot"}
 
+# Every alpaca-mcp option-data tool takes a `feed` arg that defaults to "opra" (real-time OPRA,
+# a paid market-data entitlement). A paper / free-tier Alpaca account 403s on that feed, which
+# starves the whole option-pick path -- get_option_chain returns nothing, seen_rows stays empty,
+# _fallback_pick has nothing to choose from. "indicative" is the free (15-min delayed) feed.
+_OPTION_DATA_TOOLS = {"get_option_chain", "get_option_snapshot", "get_option_latest_quote"}
+_DEFAULT_OPTION_FEED = "indicative"
+
 # alpaca-mcp-server >=0.x wraps every tool result in a trust-boundary envelope
 # (alpaca_mcp_server.security.TrustBoundaryMiddleware): the real payload moves
 # under `data`, alongside a `_alpaca_mcp_security` metadata block. langchain-mcp
@@ -41,6 +48,36 @@ def _unwrap_security_envelope(data):
             except (TypeError, ValueError):
                 break
     return data
+
+
+def ensure_option_feed(tool_name: str, args: dict, feed: str = _DEFAULT_OPTION_FEED) -> dict:
+    """Force `feed` on any alpaca-mcp option-data tool call, overriding the tool's opra default
+    (and any opra the LLM supplied). No-op for every other tool. Returns a new dict; never
+    mutates the caller's args."""
+    if tool_name in _OPTION_DATA_TOOLS:
+        return {**args, "feed": feed}
+    return args
+
+
+def mcp_text(result) -> str:
+    """Flatten a langchain-mcp-adapters tool result to plain text.
+
+    With `response_format="content_and_artifact"` (the adapter default in >=0.3), a tool result
+    is a *list* of LangChain content blocks -- `[{"type": "text", "text": "<json>"}, ...]` -- not
+    a bare string. `str()` on that list is a Python repr (single-quoted, `'type':` keys) that no
+    JSON parser can read, so the Dealer's option loop silently got zero rows out of every chain
+    response. Join the text blocks here; pass a real string straight through."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, list):
+        parts = [
+            b["text"] if isinstance(b, dict) and isinstance(b.get("text"), str) else b
+            for b in result
+            if isinstance(b, str) or (isinstance(b, dict) and b.get("type") == "text")
+        ]
+        if parts:
+            return "\n".join(str(p) for p in parts)
+    return str(result)
 
 
 def parse_occ_symbol(sym: str) -> tuple[str, str, str, float] | None:
