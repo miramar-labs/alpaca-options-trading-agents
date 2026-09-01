@@ -106,7 +106,7 @@ strategy:
   max_bid_ask_spread_pct: 0.03       # stock BUYs skip when spread/ask exceeds this fraction
 
 options_trading:
-  enabled: false            # top-level feature gate -- flipped on at competition cutover (S9)
+  enabled: true             # top-level feature gate -- on for the Alpaca hackathon competition account
   data_feed: indicative     # Alpaca option market-data feed for the Dealer's chain/quote lookups.
                             # "indicative" is the free (15-min delayed) feed; "opra" is real-time
                             # but needs a paid OPRA subscription -- the paper account has none,
