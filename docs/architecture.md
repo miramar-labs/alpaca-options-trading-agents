@@ -190,6 +190,17 @@ flowchart TD
     J --> G
 ```
 
+Every graph run is traced to LangSmith (`LANGCHAIN_API_KEY`, project
+`alpaca-options-trading-agents`), tagged `dealer`:
+
+![LangSmith trace of one Dealer graph run for AAPL](img/langsmith-dealer-trace.png)
+
+*One cycle for AAPL: `fetch_indicators` (1.6s) -> `fetch_market_data` (1.1s) ->
+`llm_call` (30.5s, `qwen3.6:35b-a3b`, ~5.6k tokens) -> `call_floor_broker`
+(0.4s). The model returned HOLD, so `execution_result` is `{detail: HOLD, status:
+skipped}`, `option_pick` is null, and the contract-selection node is never
+entered.*
+
 **LLM call:** same pattern as Analyst — `ChatOpenAI(base_url=cfg.llm.base_url,
 ...).with_structured_output(Signal)`. System prompt: *"You are an expert technical trader in
 stocks. Based on the values of ALL of the indicators below, decide if you should BUY, SELL, or
