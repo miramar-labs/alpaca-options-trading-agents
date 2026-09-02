@@ -72,8 +72,9 @@ one machine hosts:
 
 - a **k3s** Kubernetes cluster running all four agent workloads (namespace
   `alpaca-options-trader`),
-- **Ollama**, serving `qwen3.6:35b-a3b` for every Analyst/Dealer decision and the MCP contract
-  selector — local inference, not an external LLM API,
+- **Ollama**, serving `qwen2.5:32b-instruct-q4_K_M` for every Analyst/Dealer decision and the
+  MCP contract selector — local inference, not an external LLM API (see
+  [`docs/models.md`](docs/models.md) for why this model),
 - the shared **Postgres** instance backing the audit/persistence tables, and
 - a self-hosted **GitHub Actions** runner that handles the whole CI/CD path: push → test + lint
   → (on `main`) build + push 4 images to GHCR → (on a green build) roll out to the cluster.

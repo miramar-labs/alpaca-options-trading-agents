@@ -134,8 +134,8 @@ small scheduled jobs that read the account and `config.yaml` and commit the resu
   against the one paper account
 - **alpaca-mcp-server** — the official MCP server exposing Alpaca's tools, run locally as a
   stdio subprocess per Dealer poll
-- **Ollama**, self-hosted on a DGX Spark, serving `qwen3.6:35b-a3b` as the LLM behind every
-  agent decision — no external LLM API calls
+- **Ollama**, self-hosted on a DGX Spark, serving `qwen2.5:32b-instruct-q4_K_M` as the LLM
+  behind every agent decision — no external LLM API calls (see `docs/models.md`)
 - **FastAPI** (Floor Broker), **Postgres** (shared platform instance — audit trail, track
   record, DB-backed reconciliation), **Kubernetes/k3s**, **GitHub Actions** (CI/CD + badges),
   **TAAPI.io** (technical indicators), **Finnhub** (earnings calendar), **Slack** (notifications)
@@ -144,20 +144,29 @@ small scheduled jobs that read the account and `config.yaml` and commit the resu
 
 **Structured output on a local model, under an agentic loop, is the hard part — not the MCP
 plumbing itself.** The MCP tool-calling loop genuinely works end-to-end: the agent calls the
-right tools, pulls real chain data, and reasons about it. But `qwen3.6:35b-a3b`'s
-`.with_structured_output()` call at the *end* of that loop sometimes returns an empty result
-rather than a populated `OptionContractPick`, even though the tool-call history it just
-produced contains everything needed to answer. This looks like an Ollama constrained-decoding
-interaction with a long, tool-heavy context more than a pure model-capability gap — smaller,
-single-turn structured-output calls (the Dealer's own BUY/HOLD/SELL signal, for instance) don't
-show the same failure. Rather than let that empty result mean "no trade happens," the system
+right tools, pulls real chain data, and reasons about it. But the `.with_structured_output()`
+call at the *end* of that loop — the one that has to emit a populated `OptionContractPick` —
+came back empty on the first model we ran, `qwen3.6:35b-a3b`, on **every** cycle: all seven
+option positions opened on 1-2 Sep were placed by the deterministic fallback picker, not the
+model. We first read this as an Ollama constrained-decoding quirk tied to the long, tool-heavy
+context. It wasn't: instrumenting the failing call showed a ~4k-token prompt against a 32k
+window returning `content=''` after a single token — a constrained-decoding failure driven by
+`qwen3.6:35b-a3b`'s low active-parameter count (a 35B MoE with only ~3B active), not by context
+length. Smaller single-turn structured calls (the Dealer's own BUY/HOLD/SELL `Signal`) mostly
+succeeded because the schema is smaller. Rather than let an empty result mean "no trade
+happens," the system
 falls back to a deterministic contract picker (`_fallback_pick`) that selects directly from the
 chain rows the loop already fetched, using the same delta/DTE/quote gates the LLM was asked to
 apply — so a structured-output miss degrades to "the code picks the contract the same way a
-human would skim the chain" rather than silently doing nothing. A larger model and/or moving
-from Ollama's JSON-mode to a guided-decoding backend (vLLM/SGLang/NIM) is the likely real fix;
-that evaluation was underway but didn't land inside the competition window, so this submission
-ships with the fallback as a first-class, expected code path rather than a rare edge case.
+human would skim the chain" rather than silently doing nothing. The fix landed inside the
+window: each candidate model was run through the *actual* contract-selection path against live
+Alpaca MCP data (see `docs/models.md` for the table). `gpt-oss:120b` failed the same way;
+`llama3.3:70b-q4` worked but was slow; a dense **`qwen2.5:32b-instruct-q4_K_M`** produced
+valid, chain-consistent structured picks at ~10 tok/s and is now the configured model.
+`_fallback_pick` stays in place as a first-class safety net rather than a rare edge case. A
+guided-decoding backend (vLLM/SGLang/NIM) would make this bulletproof regardless of model and
+is the right long-term answer — it is an infrastructure migration off Ollama that did not fit
+the window.
 
 **Everything downstream of a model call needs to assume the model is adversarial, not just
 wrong.** The validate → reconcile → re-validate chain around the option pick wasn't originally
@@ -195,13 +204,16 @@ synthetic-exit loop active. The confidence floor, the duplicate-position guard, 
 contract-quality gates each rejected at least one real signal. No synthetic stop-loss,
 take-profit, or DTE-force-close has triggered — no position has hit −50%, +175%, or 3 DTE.
 
-**Contract selection ran entirely on the deterministic fallback.** All 7 contracts were chosen
-by `_fallback_pick`, not the model's structured output — each trade's stored reasoning reads
-*"deterministic fallback: structured LLM pick unavailable."* The MCP tool-calling loop itself
-worked every cycle: the agent called the chain / quote / greeks tools and pulled live data.
-Only the closing `.with_structured_output()` step returned empty, so the deterministic picker
-selected from the exact chain rows the loop had already fetched, under the same gates. See
-[Challenges & learnings](#challenges--learnings) for why this happens and what the real fix is.
+**Contract selection on days 1–2 ran entirely on the deterministic fallback.** All 7 contracts
+above were chosen by `_fallback_pick`, not the model's structured output — each trade's stored
+reasoning reads *"deterministic fallback: structured LLM pick unavailable."* The MCP
+tool-calling loop itself worked every cycle: the agent called the chain / quote / greeks tools
+and pulled live data. Only the closing `.with_structured_output()` step returned empty, so the
+deterministic picker selected from the exact chain rows the loop had already fetched, under the
+same gates. On 2 Sep the model was switched to `qwen2.5:32b-instruct-q4_K_M` after real-path
+testing showed it returns valid structured picks where `qwen3.6:35b-a3b` returned empty;
+contract selection from that point runs on the model, with `_fallback_pick` as the safety net.
+See [Challenges & learnings](#challenges--learnings) and `docs/models.md` for the full story.
 
 ## Repo
 

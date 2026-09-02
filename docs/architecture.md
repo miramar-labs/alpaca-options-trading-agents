@@ -196,10 +196,11 @@ Every graph run is traced to LangSmith (`LANGCHAIN_API_KEY`, project
 ![LangSmith trace of one Dealer graph run for AAPL](img/langsmith-dealer-trace.png)
 
 *One cycle for AAPL: `fetch_indicators` (1.6s) -> `fetch_market_data` (1.1s) ->
-`llm_call` (30.5s, `qwen3.6:35b-a3b`, ~5.6k tokens) -> `call_floor_broker`
-(0.4s). The model returned HOLD, so `execution_result` is `{detail: HOLD, status:
-skipped}`, `option_pick` is null, and the contract-selection node is never
-entered.*
+`llm_call` (30.5s, ~5.6k tokens) -> `call_floor_broker` (0.4s). The model
+returned HOLD, so `execution_result` is `{detail: HOLD, status: skipped}`,
+`option_pick` is null, and the contract-selection node is never entered. This
+trace was captured while the Dealer still ran `qwen3.6:35b-a3b`; it now runs
+`qwen2.5:32b-instruct-q4_K_M` (see [models.md](models.md)).*
 
 **LLM call:** same pattern as Analyst — `ChatOpenAI(base_url=cfg.llm.base_url,
 ...).with_structured_output(Signal)`. System prompt: *"You are an expert technical trader in
@@ -492,8 +493,8 @@ restarts, the Analyst and EOD Report pods Completed, and both CronJobs scheduled
 box everything is on.*
 
 Every Analyst decision, every Dealer BUY/HOLD/SELL call, and the entire MCP contract-selection
-loop is **local inference on the DGX's GPU** via Ollama (`qwen3.6:35b-a3b`) — there is no
-external LLM API in the path.
+loop is **local inference on the DGX's GPU** via Ollama (`qwen2.5:32b-instruct-q4_K_M`, see
+[models.md](models.md)) — there is no external LLM API in the path.
 
 ![DGX Spark device monitor mid-inference: GPU at 82 percent](img/dgx-spark-gpu-inference.png)
 
