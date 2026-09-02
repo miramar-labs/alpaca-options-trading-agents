@@ -34,7 +34,7 @@ communicate only through a k8s ConfigMap and a single in-cluster HTTP hop.
                          └────────────┬─────────────┘
                                       │
                                       ▼
-                 the $100k Alpaca competition paper account
+           a dedicated Alpaca paper account ($100k), created for the hackathon
 ```
 
 Analyst and Floor Broker never talk to each other directly. There is no message queue and no
@@ -466,7 +466,7 @@ workloads:
 
 | Key | Used for |
 |---|---|
-| `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` | the competition $100k paper account — trading, market data, and news |
+| `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` | the dedicated hackathon paper account ($100k) — trading, market data, and news |
 | `TAAPI_API_KEY` | technical indicators |
 | `DATABASE_URL` | the shared-Postgres consumer connection string |
 | `SLACK_WEBHOOK_URL2` | `#miramar-trading-floor` notifications |

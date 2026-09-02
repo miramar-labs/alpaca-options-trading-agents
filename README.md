@@ -8,7 +8,8 @@
 [![Dealer LLM](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/miramar-labs/alpaca-options-trading-agents/main/badges/model.json)](config.yaml)
 
 A 3-agent options-trading floor built for the **Alpaca AI Trading Agents Hackathon**
-(lablab.ai, 28 Aug – 4 Sep 2026), trading live on Alpaca's competition $100k paper account.
+(lablab.ai, 28 Aug – 4 Sep 2026), trading live on a dedicated Alpaca paper account created for
+the hackathon ($100k starting balance).
 Every agent's LLM call runs as **local inference on an NVIDIA DGX Spark**, via Ollama — no
 external LLM API. The whole stack — agents, LLM inference, Postgres, and CI/CD — runs on that
 one machine; nothing but Alpaca/TAAPI/Finnhub/Slack/GitHub traffic ever leaves it.
@@ -30,9 +31,9 @@ The agent skeleton and risk gates build on an existing multi-agent equity-tradin
 mine; the options capability — MCP contract selection, options execution, synthetic exits, EOD
 reporting — is the hackathon work. See [What's new here](docs/hackathon-writeup.md#whats-new-here).
 
-![Alpaca competition paper account dashboard, 2 Sep 2026](docs/img/day1-dashboard.png)
+![Alpaca paper account dashboard, 2 Sep 2026](docs/img/hackathon-account.png)
 
-*The competition paper account on the morning of 2 Sep 2026, holding the option positions opened on day 1 (1 Sep).*
+*The dedicated `alpaca-hackathon` paper account on the morning of 2 Sep 2026, holding the option positions opened on day 1 (1 Sep).*
 
 ## Repo layout
 

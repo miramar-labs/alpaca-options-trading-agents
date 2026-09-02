@@ -2,7 +2,7 @@
 
 **Event:** Alpaca AI Trading Agents Hackathon (lablab.ai), 28 Aug – 4 Sep 2026
 **Repo:** [miramar-labs/alpaca-options-trading-agents](https://github.com/miramar-labs/alpaca-options-trading-agents)
-**Account:** Alpaca's competition $100k paper account
+**Account:** a dedicated Alpaca paper account created for this hackathon, $100k starting balance
 
 ## What it is
 
@@ -15,8 +15,9 @@ directly. A separate execution service places the order, watches it, and manages
 synthetic stop-loss/take-profit/expiration exits since Alpaca has no server-side bracket orders
 for options.
 
-Everything runs live, continuously, on a Kubernetes cluster, against Alpaca's competition
-paper account — not a backtest, not a demo script run once for a screen recording.
+Everything runs live, continuously, on a Kubernetes cluster, against a dedicated Alpaca paper
+account created for this hackathon — not a backtest, not a demo script run once for a screen
+recording.
 
 ## What's new here
 
