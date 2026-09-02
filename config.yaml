@@ -2,9 +2,9 @@ description: "3-agent trading floor (Analyst / Dealer / Floor Broker) — Analys
 
 llm:
   base_url: "http://192.168.1.200:11434/v1"  # DGX_HOST_IP — Ollama systemd service on DGX (not in k3s)
-  model: "qwen3.6:35b-a3b"                    # see docs/models.md for model choice + Ollama-vs-vLLM decision
+  model: "qwen2.5:32b-instruct-q4_K_M"       # see docs/models.md for model choice + Ollama-vs-vLLM decision
   temperature: 0.1
-  request_timeout_s: 120   # per-request wall-clock ceiling for Ollama calls; a hung generation
+  request_timeout_s: 180   # per-request wall-clock ceiling for Ollama calls; a hung generation
                            # fails fast instead of stacking behind the 10-min poll cycle
 
 langsmith:
