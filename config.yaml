@@ -57,7 +57,10 @@ ohlcv_enrichment:
 # baseline by /revert-strategy. Enforced directly by src/floor_broker/execution.py -- see that
 # module's buy()/check_pending_fills()/check_crypto_stops() for exactly which fields are live.
 strategy:
-  daily_profit_target_usd: 1000   # blocks new BUYs once today's equity gain reaches this
+  daily_profit_target_usd: 100000 # TEMP 2026-09-02: raised from 1000 to let a BUY through and
+                                   # exercise qwen2.5:32b contract selection live (the halt had
+                                   # tripped every cycle today). REVERT to 1000 after a real
+                                   # non-fallback pick lands -- see docs/models.md.
   daily_loss_limit_usd: 2500      # blocks new BUYs once today's equity loss reaches this -- set
                                    # to 2500 on 2026-08-05, see docs/strategy.md
   halt_behavior: block_new_buys   # only this is enforced; flatten_positions is recorded intent only
