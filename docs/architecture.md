@@ -484,10 +484,12 @@ is its own image, pulled from GHCR and rolled out by the runner on a green build
 *Workloads overview: two CronJobs (Analyst at `55 8 * * *`, EOD Report at `30 13-16 * * *`),
 two Deployments, and the day's completed Jobs — all green.*
 
-![k3s Pods view showing dealer and floor-broker running](img/k3s-pods.png)
+![kubectl get pods and get cronjobs,deploy for the alpaca-options-trader namespace](img/cluster-cli.png)
 
-*Pods: `dealer` and `floor-broker` long-running with zero restarts (~130-210 MiB each); the
-Analyst and EOD Report pods completed and exited. All on node `spark-79b7`.*
+*The same from the cluster: `dealer` and `floor-broker` Deployments `1/1` and Running with zero
+restarts, the Analyst and EOD Report pods Completed, and both CronJobs scheduled in
+`America/New_York`. The `tmux` status line is the DGX itself — GPU, RAM, power, temp — the one
+box everything is on.*
 
 Every Analyst decision, every Dealer BUY/HOLD/SELL call, and the entire MCP contract-selection
 loop is **local inference on the DGX's GPU** via Ollama (`qwen3.6:35b-a3b`) — there is no
