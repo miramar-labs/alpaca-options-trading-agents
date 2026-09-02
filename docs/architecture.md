@@ -458,6 +458,40 @@ Every skip and every reconciliation gap is logged and, on transient errors, retr
 backoff rather than either silently dropping state or crashing the pod — see
 [Restart recovery](#restart-recovery) above.
 
+## Infrastructure
+
+The whole system runs on a single **NVIDIA DGX Spark** — a self-hosted k3s cluster, host-native
+Ollama for inference, the shared Postgres instance, and a self-hosted GitHub Actions runner for
+CI/CD. Nothing but Alpaca / TAAPI / Finnhub / Slack / GitHub traffic ever leaves the machine.
+
+All four workloads live in the `alpaca-options-trader` namespace: the **Analyst** and **EOD
+Report** CronJobs, and the **Dealer** and **Floor Broker** Deployments (each 1/1). Every agent
+is its own image, pulled from GHCR and rolled out by the runner on a green build of `main`.
+
+![k3s Workloads view for the alpaca-options-trader namespace](img/k3s-workloads.png)
+
+*Workloads overview: two CronJobs (Analyst at `55 8 * * *`, EOD Report at `30 13-16 * * *`),
+two Deployments, and the day's completed Jobs — all green.*
+
+![k3s Pods view showing dealer and floor-broker running](img/k3s-pods.png)
+
+*Pods: `dealer` and `floor-broker` long-running with zero restarts (~130-210 MiB each); the
+Analyst and EOD Report pods completed and exited. All on node `spark-79b7`.*
+
+Every Analyst decision, every Dealer BUY/HOLD/SELL call, and the entire MCP contract-selection
+loop is **local inference on the DGX's GPU** via Ollama (`qwen3.6:35b-a3b`) — there is no
+external LLM API in the path.
+
+![DGX Spark device monitor mid-inference: GPU at 82 percent](img/dgx-spark-gpu-inference.png)
+
+*The DGX Spark device monitor while an agent cycle runs: GPU at 82%, 62 of 131 GB unified
+memory in use, 76 C.*
+
+![DGX Spark device monitor across a full decision cycle](img/dgx-spark-inference-cycle.png)
+
+*GPU utilization across one full decision cycle — pegged near 85% while the model runs, then
+back to idle (15 W) the moment the call returns.*
+
 ## Secrets
 
 One k8s Secret, `mlabs-api-keys` in the `alpaca-options-trader` namespace (see
