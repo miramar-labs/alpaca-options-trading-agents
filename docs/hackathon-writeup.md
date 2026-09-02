@@ -5,6 +5,7 @@
 **Account:** a dedicated Alpaca paper account created for this hackathon, $100k starting balance
 
 > Condensed one-page version for the submission form: [`hackathon-writeup.pdf`](hackathon-writeup.pdf).
+> Slide deck: [`hackathon-deck.pdf`](hackathon-deck.pdf).
 
 ## What it is
 
