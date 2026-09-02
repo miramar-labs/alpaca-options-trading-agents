@@ -13,7 +13,7 @@ langsmith:
   sampling_rate: 0.5   # caps Dealer's poll-driven trace volume under the free Developer plan's 5k traces/month limit
 
 slack:
-  enabled: true   # requires SLACK_WEBHOOK_URL2 in the mlabs-api-keys secret; posts to #miramar-trading-floor
+  enabled: true   # requires SLACK_WEBHOOK_URL2 in the mlabs-api-keys secret; posts to #alpaca-hackathon-trading-floor
 
 floor_broker:
   base_url: "http://floor-broker.alpaca-options-trader.svc.cluster.local:8000"
