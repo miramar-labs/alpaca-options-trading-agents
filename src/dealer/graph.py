@@ -475,8 +475,8 @@ def _fallback_pick(rows: list[dict], right: str, cfg, delta_mid: float, today) -
     |delta| is closest to the target-delta midpoint, among those matching right / delta window /
     DTE window with a usable quote. Configured min_open_interest / min_volume are enforced only for
     rows where Alpaca actually returned those fields (its option snapshots usually omit them). Keeps
-    options trading working when qwen3.6 flakes; the Floor Broker's risk gates still run on the
-    result."""
+    options trading working when the model's structured pick comes back empty or is rejected; the
+    Floor Broker's risk gates still run on the result."""
     ot = cfg.options_trading
     best = None
     for r in rows:
@@ -579,12 +579,12 @@ async def _select_option_contract_async(state: DealerState, cfg, signal: dict) -
 
     seen_rows: list[dict] = []
 
-    # Deterministic chain pre-fetch. The local model (qwen3.6:35b-a3b) is unreliable at both
-    # emitting the get_option_chain tool call and returning a structured pick -- see
-    # _fallback_pick's docstring. Fetching the chain ourselves, once, with known-good filters
-    # guarantees seen_rows is populated (so _fallback_pick can always run) regardless of what the
-    # model does. The agent loop below still runs so a more capable model can refine, but it is no
-    # longer load-bearing.
+    # Deterministic chain pre-fetch. A local model can be unreliable at emitting the
+    # get_option_chain tool call and/or returning a structured pick (qwen3.6:35b-a3b failed the
+    # structured pick every cycle -- see _fallback_pick's docstring and docs/models.md). Fetching
+    # the chain ourselves, once, with known-good filters guarantees seen_rows is populated (so
+    # _fallback_pick can always run) regardless of what the model does. The agent loop below still
+    # runs so the model can refine, but it is not load-bearing.
     chain_tool = tools_by_name.get("get_option_chain")
     if chain_tool is not None:
         seed_args = ensure_option_feed(
