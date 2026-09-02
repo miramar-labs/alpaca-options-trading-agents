@@ -480,11 +480,9 @@ on the repo, same competition-account values.
 
 ## Provenance
 
-This repo is a hackathon-scoped extraction of a private, longer-running trading system —
-crypto trading, a backtest harness, and a nightly power scheduler were left out because they're
-out of scope for a one-week options-trading competition, not because they don't work. Every
-kept file was ported without behavior changes beyond repointing names (repo URL, k8s namespace,
-GHCR image path) to this repo; `config.yaml`'s feature flags, not code edits, are what make this
-deployment stocks+options-only. See [the write-up](hackathon-writeup.md) for the project
-narrative and [git log](https://github.com/miramar-labs/alpaca-options-trading-agents/commits/main)
-for the actual build history.
+The equity-signal framework (Analyst/Dealer/Floor Broker skeleton, the risk gates, the
+config-as-URL loader) comes from an existing multi-agent trading system of the author's; the
+options layer — MCP contract selection, the options execution path, options risk gates and
+synthetic exits, EOD reporting — is this project. See [the write-up](hackathon-writeup.md#whats-new-here)
+for the split and [git log](https://github.com/miramar-labs/alpaca-options-trading-agents/commits/main)
+for the build history.

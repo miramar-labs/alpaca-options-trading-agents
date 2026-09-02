@@ -18,6 +18,19 @@ for options.
 Everything runs live, continuously, on a Kubernetes cluster, against Alpaca's competition
 paper account — not a backtest, not a demo script run once for a screen recording.
 
+## What's new here
+
+This builds on an existing multi-agent equity-trading framework of mine — the Analyst /
+Dealer / Floor Broker structure, the layered risk gates, and the config-as-URL loader
+predate the hackathon and trade the underlying stock directly. The hackathon work is the
+options capability: the Alpaca MCP contract-selection agent (the core of this submission),
+the options execution path in the Floor Broker, options-specific risk gates and the synthetic
+stop-loss / take-profit / expiration exits, the end-of-day Slack report, and packaging the
+whole thing as a live, continuously-trading deployment. Everything in this repo's
+[commit history](https://github.com/miramar-labs/alpaca-options-trading-agents/commits/main)
+is that work, done during the competition week. Crypto trading, a backtest harness, and a
+nightly power scheduler exist in the upstream framework but were left out as out of scope.
+
 ## The problem
 
 Turning a directional stock call ("this looks like a buy") into an actual options trade is a

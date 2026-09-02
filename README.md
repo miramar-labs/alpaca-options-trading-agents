@@ -26,6 +26,10 @@ live P/L + model badges round it out. See [`docs/hackathon-writeup.md`](docs/hac
 for the submission narrative and [`docs/architecture.md`](docs/architecture.md) for full
 technical detail.
 
+The agent skeleton and risk gates build on an existing multi-agent equity-trading framework of
+mine; the options capability — MCP contract selection, options execution, synthetic exits, EOD
+reporting — is the hackathon work. See [What's new here](docs/hackathon-writeup.md#whats-new-here).
+
 ## Repo layout
 
 ```
