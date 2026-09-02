@@ -4,6 +4,8 @@
 **Repo:** [miramar-labs/alpaca-options-trading-agents](https://github.com/miramar-labs/alpaca-options-trading-agents)
 **Account:** a dedicated Alpaca paper account created for this hackathon, $100k starting balance
 
+> Condensed one-page version for the submission form: [`hackathon-writeup.pdf`](hackathon-writeup.pdf).
+
 ## What it is
 
 A three-agent trading floor that autonomously trades **options** on US equities. Every

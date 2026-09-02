@@ -24,8 +24,9 @@ one machine; nothing but Alpaca/TAAPI/Finnhub/Slack/GitHub traffic ever leaves i
 Layered risk gates (confidence threshold, macro-event blackout, stop-loss cooldown, win-rate
 throttle, daily halt, notional cap, a runtime kill switch), a daily end-of-day Slack recap, and
 live P/L + model badges round it out. See [`docs/hackathon-writeup.md`](docs/hackathon-writeup.md)
-for the submission narrative and [`docs/architecture.md`](docs/architecture.md) for full
-technical detail.
+for the submission narrative (one-page PDF version:
+[`docs/hackathon-writeup.pdf`](docs/hackathon-writeup.pdf)) and
+[`docs/architecture.md`](docs/architecture.md) for full technical detail.
 
 The agent skeleton and risk gates build on an existing multi-agent equity-trading framework of
 mine; the options capability — MCP contract selection, options execution, synthetic exits, EOD
