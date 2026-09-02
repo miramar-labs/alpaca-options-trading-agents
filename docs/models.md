@@ -36,7 +36,9 @@ schema at the end of a tool-laden transcript did not.
 ## What was tested
 
 Each candidate was run through the **actual** `_select_option_contract_async`
-path on the DGX, against live Alpaca MCP option-chain data, for real underlyings:
+path on the DGX, against live Alpaca MCP option-chain data, for real underlyings
+— the same check now committed as
+[`scripts/check_contract_selection.py`](../scripts/check_contract_selection.py):
 
 | Model | Resident | Gen speed | Structured pick | Notes |
 |---|---|---|---|---|
@@ -55,6 +57,31 @@ raised 120 → 180 for margin on the slightly slower per-call latency.
 Ollama is configured with `OLLAMA_KEEP_ALIVE=30m` (systemd drop-in) so the model
 stays resident between the Dealer's 10-minute poll cycles instead of cold-loading
 each time.
+
+## Verifying the live model
+
+`scripts/check_contract_selection.py` runs the real selection path (MCP
+subprocess, tool loop, `with_structured_output`) without touching the
+signal / duplicate / risk gates, so it never places an order. Run it in the
+dealer pod:
+
+```
+kubectl -n alpaca-options-trader exec deploy/dealer -- python /tmp/ccs.py NVDA BUY
+```
+
+It prints `fell_back=False` and the pick JSON when the model returns a valid
+structured contract, `fell_back=True` when `_fallback_pick` had to salvage it.
+Post-switch check on 2 Sep 2026, `qwen2.5:32b-instruct-q4_K_M`, all
+`fell_back=False`:
+
+| Symbol | Signal | Pick | Δ | Premium |
+|---|---|---|---|---|
+| NVDA | BUY | `NVDA260916C00230000` call | 0.35 | $3.08 |
+| TSLA | BUY | `TSLA260916C00360000` call | 0.47 | $10.32 |
+| AAPL | SELL | `AAPL260916P00325000` put | 0.48 | $6.10 |
+
+Each pick is the correct right (call ↔ BUY, put ↔ SELL) and lands inside the
+configured delta and DTE windows.
 
 ## Ollama vs. a guided-decoding backend (vLLM / SGLang / NIM)
 

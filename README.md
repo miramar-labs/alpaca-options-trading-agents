@@ -52,8 +52,9 @@ alpaca-options-trading-agents/
 │   ├── eod_report/           # CronJob -- daily Slack recap
 │   ├── pl_badges/             # README P/L badge refresh (GitHub Actions)
 │   └── model_badge/           # README "Dealer LLM" badge refresh (GitHub Actions)
+├── scripts/               # check_contract_selection.py -- live LLM-pick vs fallback diagnostic
 ├── tests/                 # mirrors src/
-└── docs/                  # architecture.md, hackathon-writeup.md
+└── docs/                  # architecture.md, hackathon-writeup.md, models.md
 ```
 
 ## Development

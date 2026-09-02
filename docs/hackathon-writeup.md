@@ -160,10 +160,13 @@ chain rows the loop already fetched, using the same delta/DTE/quote gates the LL
 apply — so a structured-output miss degrades to "the code picks the contract the same way a
 human would skim the chain" rather than silently doing nothing. The fix landed inside the
 window: each candidate model was run through the *actual* contract-selection path against live
-Alpaca MCP data (see `docs/models.md` for the table). `gpt-oss:120b` failed the same way;
-`llama3.3:70b-q4` worked but was slow; a dense **`qwen2.5:32b-instruct-q4_K_M`** produced
-valid, chain-consistent structured picks at ~10 tok/s and is now the configured model.
-`_fallback_pick` stays in place as a first-class safety net rather than a rare edge case. A
+Alpaca MCP data — the check is committed as `scripts/check_contract_selection.py` (see
+`docs/models.md` for the table). `gpt-oss:120b` failed the same way; `llama3.3:70b-q4` worked
+but was slow; a dense **`qwen2.5:32b-instruct-q4_K_M`** produced valid, chain-consistent
+structured picks at ~10 tok/s and is now the configured model. Re-run post-switch on NVDA,
+TSLA and AAPL it returned real picks (`fell_back=False`) every time, correct right and inside
+the delta/DTE windows. `_fallback_pick` stays in place as a first-class safety net rather than
+a rare edge case. A
 guided-decoding backend (vLLM/SGLang/NIM) would make this bulletproof regardless of model and
 is the right long-term answer — it is an infrastructure migration off Ollama that did not fit
 the window.
@@ -211,8 +214,9 @@ tool-calling loop itself worked every cycle: the agent called the chain / quote 
 and pulled live data. Only the closing `.with_structured_output()` step returned empty, so the
 deterministic picker selected from the exact chain rows the loop had already fetched, under the
 same gates. On 2 Sep the model was switched to `qwen2.5:32b-instruct-q4_K_M` after real-path
-testing showed it returns valid structured picks where `qwen3.6:35b-a3b` returned empty;
-contract selection from that point runs on the model, with `_fallback_pick` as the safety net.
+testing (`scripts/check_contract_selection.py`) showed it returns valid structured picks —
+`fell_back=False` on NVDA, TSLA and AAPL — where `qwen3.6:35b-a3b` returned empty; contract
+selection from that point runs on the model, with `_fallback_pick` as the safety net.
 See [Challenges & learnings](#challenges--learnings) and `docs/models.md` for the full story.
 
 ## Repo

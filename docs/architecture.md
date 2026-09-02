@@ -243,6 +243,8 @@ to Alpaca's options tools via **MCP**:
   retries. If structured output still fails or comes back empty, `_fallback_pick` deterministically
   picks from the rows already seen (delta + DTE + quote gates) instead of returning nothing —
   see the [structured-output caveat](hackathon-writeup.md#challenges--learnings) in the write-up.
+  `scripts/check_contract_selection.py` exercises this whole path against the live chain, gates
+  aside, and reports whether the model picked or fell back.
 - The structured pick is **validated** (`right` must match the intended direction, and the
   `contract_symbol` must be one actually seen in a chain response — a hallucinated or
   wrong-direction pick is rejected in favor of the direction-safe fallback), then **reconciled**:
