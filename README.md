@@ -30,9 +30,9 @@ The agent skeleton and risk gates build on an existing multi-agent equity-tradin
 mine; the options capability — MCP contract selection, options execution, synthetic exits, EOD
 reporting — is the hackathon work. See [What's new here](docs/hackathon-writeup.md#whats-new-here).
 
-![Competition paper account, end of day 1 — +3.19%, holding six option contracts](docs/img/day1-dashboard.png)
+![Alpaca competition paper account dashboard, 2 Sep 2026](docs/img/day1-dashboard.png)
 
-*Alpaca competition paper account after day 1 of live trading (2 Sep 2026).*
+*The competition paper account on the morning of 2 Sep 2026, holding the option positions opened on day 1 (1 Sep).*
 
 ## Repo layout
 
