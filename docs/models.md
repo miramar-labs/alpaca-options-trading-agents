@@ -60,13 +60,13 @@ each time.
 
 ## Verifying the live model
 
-`scripts/check_contract_selection.py` runs the real selection path (MCP
-subprocess, tool loop, `with_structured_output`) without touching the
-signal / duplicate / risk gates, so it never places an order. Run it in the
-dealer pod:
+`scripts/check_contract_selection.py` (shipped in the dealer image) runs the real
+selection path (MCP subprocess, tool loop, `with_structured_output`) without
+touching the signal / duplicate / risk gates, so it never places an order. Run it
+in the dealer pod:
 
 ```
-kubectl -n alpaca-options-trader exec deploy/dealer -- python /tmp/ccs.py NVDA BUY
+kubectl -n alpaca-options-trader exec deploy/dealer -- python scripts/check_contract_selection.py NVDA BUY
 ```
 
 It prints `fell_back=False` and the pick JSON when the model returns a valid

@@ -10,13 +10,11 @@ directly, so it never places an order and does not need the profit-target halt
 lifted. Use it to confirm a model change (see ``docs/models.md``) before trusting
 it in the live loop.
 
-Run it inside the dealer pod, where the MCP server, Ollama endpoint and Alpaca
-credentials are already wired up::
+It ships in the dealer image. Run it inside the dealer pod, where the MCP server,
+Ollama endpoint and Alpaca credentials are already wired up::
 
-    kubectl -n alpaca-options-trader cp scripts/check_contract_selection.py \\
-        "$(kubectl -n alpaca-options-trader get pod -l app=dealer \\
-        -o jsonpath='{.items[0].metadata.name}'):/tmp/ccs.py"
-    kubectl -n alpaca-options-trader exec deploy/dealer -- python /tmp/ccs.py NVDA BUY
+    kubectl -n alpaca-options-trader exec deploy/dealer -- \\
+        python scripts/check_contract_selection.py NVDA BUY
 
 ``fell_back=False`` means the model returned a valid structured pick. ``fell_back=True``
 means ``_fallback_pick`` had to salvage it (empty or rejected structured output) --
