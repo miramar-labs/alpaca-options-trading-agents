@@ -16,8 +16,7 @@ spec:
         deploy.miramar/commit-sha: DEPLOY_SHA_PLACEHOLDER  # forces a rollout even when the image tag string (":latest") doesn't change
     spec:
       serviceAccountName: alpaca-options-trader-configmap-reader
-      imagePullSecrets:
-        - name: ghcr-pull
+      # GHCR packages are public -- pulled anonymously, no imagePullSecrets.
       containers:
         - name: floor-broker
           image: GHCR_IMAGE_FLOOR_BROKER_PLACEHOLDER

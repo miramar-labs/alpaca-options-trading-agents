@@ -11,8 +11,8 @@ name: Build and Push
 #
 # GHCR auth uses the built-in GITHUB_TOKEN (permissions: packages: write). The
 # image namespace ghcr.io/miramar-labs/alpaca-options-trading-agents-* is
-# owner-matched to this repo, so no org PAT is needed. Flip the four packages
-# to public after the first run so deploy.yaml's ghcr-pull secret is optional.
+# owner-matched to this repo, so no org PAT is needed. The four packages are
+# public, so K3s pulls them anonymously -- deploy.yaml creates no pull secret.
 
 on:
   workflow_dispatch:

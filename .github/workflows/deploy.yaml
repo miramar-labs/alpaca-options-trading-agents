@@ -51,14 +51,12 @@ jobs:
       - name: Ensure namespace
         run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply --validate=false -f -
 
-      - name: Ensure GHCR pull secret
-        run: |
-          kubectl create secret docker-registry ghcr-pull \
-            --docker-server=ghcr.io \
-            --docker-username="${{ github.actor }}" \
-            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
-            -n "$NAMESPACE" \
-            --dry-run=client -o yaml | kubectl apply --validate=false -f -
+      # No GHCR pull secret: the four -analyst/-dealer/-floor-broker/-eod-report
+      # packages are public, so K3s pulls them anonymously. A docker-registry
+      # secret built from the ephemeral GITHUB_TOKEN would expire ~1h after the
+      # run, and once present it *shadows* the anonymous fallback -- so any later
+      # fresh pull (the Analyst/EOD CronJobs firing next morning) 403s. Rely on
+      # anonymous pulls instead; the imagePullSecrets refs are gone from k8s/.
 
       - name: Ensure mlabs-api-keys secret
         run: |

@@ -20,8 +20,7 @@ spec:
           labels:
             app: eod-report
         spec:
-          imagePullSecrets:
-            - name: ghcr-pull
+          # GHCR packages are public -- pulled anonymously, no imagePullSecrets.
           restartPolicy: Never
           containers:
             - name: eod-report

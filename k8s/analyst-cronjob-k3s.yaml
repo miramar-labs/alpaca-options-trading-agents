@@ -20,8 +20,7 @@ spec:
             app: analyst
         spec:
           serviceAccountName: alpaca-options-trader-configmap-reader
-          imagePullSecrets:
-            - name: ghcr-pull
+          # GHCR packages are public -- pulled anonymously, no imagePullSecrets.
           restartPolicy: Never
           containers:
             - name: analyst
