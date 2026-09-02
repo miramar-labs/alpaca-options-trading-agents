@@ -182,26 +182,29 @@ non-hackathon version of this system already needed for real paper-money trades.
 
 ## Results
 
-*Snapshot as of midday ET on 2 Sep 2026 — day 2 of the competition window, with the system
-still running. The live P/L badges in the README and the `options_trades` / `floor_broker_events`
+*Snapshot at the 2 Sep 2026 close — day 2 of the competition window, with the system still
+running. The live P/L badges in the README and the `options_trades` / `floor_broker_events`
 tables in Postgres are the current source of truth. No position has closed yet, so there is no
 realized P/L or win rate to report.*
 
-**Trading activity (1–2 Sep 2026, two sessions).** The Dealer ran 114 decision cycles across
-the watchlist: 97 HOLD, 15 BUY, 2 SELL. The 15 BUY signals produced **7 distinct option
-positions** — the rest were stopped before execution by the risk layer: one for a 0.51
-confidence score against the 0.6 floor, several as duplicates of a position already open or an
-order already in flight, and three because no contract in the fetched chain passed the DTE /
-delta / open-interest / volume gates. All 7 submitted orders filled (100%), each within half a
-minute.
+**Trading activity (1–2 Sep 2026, two sessions).** Across the two sessions the Dealer polled the
+watchlist every 600s; the great majority of calls were HOLD, with a couple of dozen BUY signals
+and a handful of SELL. Those produced **7 distinct option positions** — the rest were stopped
+before execution by the risk layer: seven below the 0.6 confidence floor, several as duplicates
+of a position already open or an order already in flight, three because no contract in the
+fetched chain passed the DTE / delta / open-interest / volume gates, and the remainder swallowed
+by the daily profit-target halt once day 2 went green. All 7 submitted orders filled (100%),
+each within half a minute.
 
-**Open book.** 5 long calls, 2 long puts, ~$10.0k of premium deployed, entry deltas 0.43–0.53,
-15–45 DTE. As of the snapshot: account equity **$100,824 (+0.8% vs the $100k open)**; aggregate
-unrealized P/L **+$825**, 5 of 7 positions green. Best: an FRVO put at +32%. Worst: MSFT 505C at
-−37% (−$580) and AMZN 255C at −15% (−$180). Day 1 closed at $98,641 (−1.4%); day 2 had recovered
-+$2,184 intraday by the snapshot.
+**Open book (2 Sep close).** 5 long calls, 2 long puts, ~$10.3k current value (~$10.0k premium
+deployed at entry), entry deltas 0.43–0.53, 15–45 DTE. Account equity **$100,319 (+0.3% vs the
+$100k open)**, cash $89,979; the session gained **+$1,678 (+1.70%)** on the day. 4 of 7
+positions green — best V 375C at +25% and FRVO Sep put at +22%; worst MSFT 505C at −31% and
+AMZN 255C at −18%. Day 1 had closed at $98,641 (−1.4%); day 2 clawed most of it back.
 
-**Risk gates, observed firing.** The daily profit-target halt tripped three times on 2 Sep once
+![End-of-day Slack report for 2 Sep 2026 in #alpaca-hackathon-trading-floor](img/eod-report.png)
+
+**Risk gates, observed firing.** The daily profit-target halt tripped repeatedly on 2 Sep once
 intraday P/L cleared +$1,000, blocking further BUYs for the rest of the session while leaving the
 synthetic-exit loop active. The confidence floor, the duplicate-position guard, and the
 contract-quality gates each rejected at least one real signal. No synthetic stop-loss,
