@@ -430,7 +430,7 @@ first time. Full field-level comments live in `config.yaml` itself.
 |---|---|---|
 | `llm` | `base_url`, `model`, `temperature`, `request_timeout_s` | shared OpenAI-compatible endpoint (Ollama on the DGX) for both Analyst and Dealer LLM calls, and the MCP contract-selection loop |
 | `langsmith` | `enabled`, `project`, `sampling_rate` | LangGraph/LangChain tracing to LangSmith; sampled to stay under the free plan's trace limit |
-| `slack` | `enabled` | posts Morning Report, Dealer signals, Floor Broker executions, and EOD Report to `#miramar-trading-floor` |
+| `slack` | `enabled` | posts Morning Report, Dealer signals, Floor Broker executions, and EOD Report to `#alpaca-hackathon-trading-floor` |
 | `floor_broker` | `base_url` | in-cluster Service DNS Dealer uses to reach Floor Broker |
 | `alpaca.live` | `key_env`, `secret_env` | which env var names in the k8s secret hold the active paper-account credentials — `ALPACA_PAPER_API_KEY`/`_SECRET` in this repo, the competition account directly |
 | `trading` | `slP`/`tpP`, `pollsecs`, `buffer`, `stocks.enabled`, `crypto.enabled` | equity bracket multipliers (unused when options are on — see `options_trading` below), Dealer's 600s poll interval, post-open buffer, and per-market on/off switches (crypto is off in this repo) |
@@ -516,7 +516,7 @@ workloads:
 | `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` | the dedicated hackathon paper account ($100k) — trading, market data, and news |
 | `TAAPI_API_KEY` | technical indicators |
 | `DATABASE_URL` | the shared-Postgres consumer connection string |
-| `SLACK_WEBHOOK_URL2` | `#miramar-trading-floor` notifications |
+| `SLACK_WEBHOOK_URL2` | `#alpaca-hackathon-trading-floor` notifications |
 | `LANGCHAIN_API_KEY` | LangSmith tracing |
 | `FINNHUB_API_KEY` | the earnings-blackout calendar |
 | `GITHUB_WORKFLOW_TOKEN` (optional) | lets EOD Report dispatch the P/L badge refresh workflow instantly instead of waiting for its cron |
