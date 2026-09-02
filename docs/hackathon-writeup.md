@@ -166,10 +166,38 @@ non-hackathon version of this system already needed for real paper-money trades.
 
 ## Results
 
-*Filled in once several trading days' worth of live contracts have opened and closed on the
-competition account — see `options_trades` in Postgres for the ledger this section is sourced
-from. Deploy went live 2 Sep 2026; check back after 3-4 Sep for realized entries/exits, win
-rate, and the live P/L badges above in the README.*
+*Snapshot as of midday ET on 2 Sep 2026 — day 2 of the competition window, with the system
+still running. The live P/L badges in the README and the `options_trades` / `floor_broker_events`
+tables in Postgres are the current source of truth. No position has closed yet, so there is no
+realized P/L or win rate to report.*
+
+**Trading activity (1–2 Sep 2026, two sessions).** The Dealer ran 114 decision cycles across
+the watchlist: 97 HOLD, 15 BUY, 2 SELL. The 15 BUY signals produced **7 distinct option
+positions** — the rest were stopped before execution by the risk layer: one for a 0.51
+confidence score against the 0.6 floor, several as duplicates of a position already open or an
+order already in flight, and three because no contract in the fetched chain passed the DTE /
+delta / open-interest / volume gates. All 7 submitted orders filled (100%), each within half a
+minute.
+
+**Open book.** 5 long calls, 2 long puts, ~$10.0k of premium deployed, entry deltas 0.43–0.53,
+15–45 DTE. As of the snapshot: account equity **$100,824 (+0.8% vs the $100k open)**; aggregate
+unrealized P/L **+$825**, 5 of 7 positions green. Best: an FRVO put at +32%. Worst: MSFT 505C at
+−37% (−$580) and AMZN 255C at −15% (−$180). Day 1 closed at $98,641 (−1.4%); day 2 had recovered
++$2,184 intraday by the snapshot.
+
+**Risk gates, observed firing.** The daily profit-target halt tripped three times on 2 Sep once
+intraday P/L cleared +$1,000, blocking further BUYs for the rest of the session while leaving the
+synthetic-exit loop active. The confidence floor, the duplicate-position guard, and the
+contract-quality gates each rejected at least one real signal. No synthetic stop-loss,
+take-profit, or DTE-force-close has triggered — no position has hit −50%, +175%, or 3 DTE.
+
+**Contract selection ran entirely on the deterministic fallback.** All 7 contracts were chosen
+by `_fallback_pick`, not the model's structured output — each trade's stored reasoning reads
+*"deterministic fallback: structured LLM pick unavailable."* The MCP tool-calling loop itself
+worked every cycle: the agent called the chain / quote / greeks tools and pulled live data.
+Only the closing `.with_structured_output()` step returned empty, so the deterministic picker
+selected from the exact chain rows the loop had already fetched, under the same gates. See
+[Challenges & learnings](#challenges--learnings) for why this happens and what the real fix is.
 
 ## Repo
 
