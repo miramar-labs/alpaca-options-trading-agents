@@ -40,8 +40,11 @@ communicate only through a k8s ConfigMap and a single in-cluster HTTP hop.
 Analyst and Floor Broker never talk to each other directly. There is no message queue and no
 shared filesystem — the only *coordination* state between agents is the `portfolio` ConfigMap,
 and the only network hop is Dealer → Floor Broker. Separately, all three agents also write
-fire-and-forget history rows to Postgres (see [Persistence](#persistence)) — an append-only
-audit trail, not a coordination channel any agent depends on to function.
+fire-and-forget history rows to Postgres (see [Persistence](#persistence)). That store is not a
+coordination channel any agent depends on to function within a cycle, but it is more than an
+audit log: the Analyst and Dealer read it back on the next run to give the agents memory across
+cycles (past picks, decisions, and how execution went), and the win-rate throttle and
+same-symbol stop cooldown are computed from it.
 
 Independently of that cycle, a fourth CronJob queries Alpaca directly once a day after market
 close and posts a summary to Slack:
@@ -401,9 +404,22 @@ Schema is created idempotently (`CREATE TABLE IF NOT EXISTS`) by `db.py` itself 
 Postgres outage must never block a trading decision. There is no historical backfill — the
 tables start empty at deploy time.
 
-Read access feeds back into the running system: `fetch_track_record` (Analyst's own recent pick
-history), and the same-symbol helpers used by Dealer memory, same-symbol stop cooldown, and the
-win-rate throttle.
+**Reads are where it earns its keep — this store gives the agents memory across cycles**, not
+just an audit trail. Each agent process is otherwise stateless between runs (the Analyst and
+EOD Report CronJobs exit; the Dealer and Floor Broker hold nothing durable in memory), so the
+only way one cycle informs the next is through these tables:
+
+- `fetch_track_record` — the Analyst reads its own recent picks plus the matching Dealer
+  decisions and Floor Broker outcomes, and that history goes into the Analyst prompt so it can
+  see how earlier calls played out.
+- Dealer memory (`strategy.dealer_memory.enabled`) — recent same-symbol Dealer decisions and
+  Floor Broker outcomes are added to the Dealer prompt as advisory context.
+- The win-rate throttle and same-symbol stop cooldown are derived from `floor_broker_events` /
+  `options_trades` at decision time.
+
+Unlike the write path, these reads are **not** wrapped in try/except — a read failure here
+surfaces as a run error rather than silently degrading, because a decision made without the
+track record is a different decision.
 
 ## Data flow — one full cycle
 

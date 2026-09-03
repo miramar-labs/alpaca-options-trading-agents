@@ -80,6 +80,11 @@ Full technical detail — every node, every gate, the config reference, the DB s
 - **EOD Report** — a daily CronJob that posts a plain-language account/trade recap to Slack,
   independent of the trading loop above.
 
+Every agent process is stateless between runs, so the Postgres tables are more than an audit
+trail — they are the agents' **memory across cycles**. The Analyst and Dealer read their own
+past picks, decisions, and execution outcomes back into their prompts on the next run, and the
+win-rate throttle and same-symbol stop cooldown are computed from the same history.
+
 ## The Alpaca MCP integration
 
 This is the feature the whole submission is built around, so it's worth calling out on its
@@ -136,8 +141,8 @@ small scheduled jobs that read the account and `config.yaml` and commit the resu
   stdio subprocess per Dealer poll
 - **Ollama**, self-hosted on a DGX Spark, serving `qwen2.5:32b-instruct-q4_K_M` as the LLM
   behind every agent decision — no external LLM API calls (see `docs/models.md`)
-- **FastAPI** (Floor Broker), **Postgres** (shared platform instance — audit trail, track
-  record, DB-backed reconciliation), **Kubernetes/k3s**, **GitHub Actions** (CI/CD + badges),
+- **FastAPI** (Floor Broker), **Postgres** (shared platform instance — cross-cycle agent
+  memory, audit trail, DB-backed reconciliation), **Kubernetes/k3s**, **GitHub Actions** (CI/CD + badges),
   **TAAPI.io** (technical indicators), **Finnhub** (earnings calendar), **Slack** (notifications)
 
 ## Challenges & learnings
