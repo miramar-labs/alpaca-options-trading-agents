@@ -246,6 +246,12 @@ analyst:
                      # qualitative track_record above rather than replacing it
   max_universe_size: 10
   default_budget: 5000
+  fallback_universe_size: 3    # when the LLM selection comes back empty -- or every pick is dropped
+                                # by validate_selection as a hallucination -- ensure_universe() writes
+                                # this many top movers (by |change_pct|) at default_budget so an empty
+                                # selection can't bench the Dealer for the whole session. Mirrors the
+                                # Dealer's own _fallback_pick; only fires when there were real
+                                # candidates to fall back on.
   max_total_budget_usd: 50000  # last-line-of-defense cap on the sum of every pick's budget in one
                                 # selection -- per-pick budget has no upper bound of its own, and
                                 # the LLM's default_budget above is only a suggestion it can ignore.

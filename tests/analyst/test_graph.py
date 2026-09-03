@@ -458,6 +458,109 @@ def test_validate_selection_drops_trailing_picks_that_would_exceed_the_total_bud
     assert [pick["symbol"] for pick in result["selection"]["symbols"]] == ["A", "C"]
 
 
+def _universe_cfg(fallback_universe_size=3, default_budget=5000.0, max_total_budget_usd=1_000_000.0):
+    return OmegaConf.create(
+        {
+            "analyst": {
+                "fallback_universe_size": fallback_universe_size,
+                "default_budget": default_budget,
+                "max_total_budget_usd": max_total_budget_usd,
+            }
+        }
+    )
+
+
+def test_ensure_universe_passes_a_non_empty_selection_through_untouched():
+    state = _state(
+        raw_candidates=[{"symbol": "AAA", "market": "stocks", "change_pct": 30.0}],
+        picks=[{"symbol": "AAA", "exchange": "stocks", "budget": 5000.0}],
+    )
+
+    result = graph.ensure_universe(state, _universe_cfg())
+
+    assert result["selection"]["symbols"] == [{"symbol": "AAA", "exchange": "stocks", "budget": 5000.0}]
+
+
+def test_ensure_universe_writes_nothing_when_there_are_no_candidates():
+    """A genuinely empty candidate pool (market closed, crypto disabled) has nothing to fall back
+    to -- an empty portfolio is correct there, not a failure."""
+    state = _state(raw_candidates=[], picks=[])
+
+    result = graph.ensure_universe(state, _universe_cfg())
+
+    assert result["selection"]["symbols"] == []
+
+
+def test_ensure_universe_falls_back_to_top_movers_when_the_selection_is_empty(monkeypatch):
+    monkeypatch.setattr(graph.slack, "notify_error", lambda *a, **k: None)
+    state = _state(
+        raw_candidates=[
+            {"symbol": "SMALL", "market": "stocks", "change_pct": 2.0},
+            {"symbol": "BIG", "market": "stocks", "change_pct": -28.0},
+            {"symbol": "MID", "market": "binance", "change_pct": 11.0},
+            {"symbol": "TINY", "market": "stocks", "change_pct": 0.5},
+        ],
+        picks=[],
+    )
+
+    result = graph.ensure_universe(state, _universe_cfg(fallback_universe_size=2))
+
+    picks = result["selection"]["symbols"]
+    assert [p["symbol"] for p in picks] == ["BIG", "MID"]
+    assert picks[0]["exchange"] == "stocks"
+    assert picks[1]["exchange"] == "binance"
+    assert all(p["budget"] == 5000.0 for p in picks)
+    assert all(p["rationale"].startswith("deterministic fallback") for p in picks)
+
+
+def test_ensure_universe_fallback_respects_the_total_budget_cap(monkeypatch):
+    monkeypatch.setattr(graph.slack, "notify_error", lambda *a, **k: None)
+    state = _state(
+        raw_candidates=[
+            {"symbol": "A", "market": "stocks", "change_pct": 30.0},
+            {"symbol": "B", "market": "stocks", "change_pct": 20.0},
+            {"symbol": "C", "market": "stocks", "change_pct": 10.0},
+        ],
+        picks=[],
+    )
+
+    result = graph.ensure_universe(
+        state, _universe_cfg(fallback_universe_size=3, default_budget=5000.0, max_total_budget_usd=12000.0)
+    )
+
+    assert [p["symbol"] for p in result["selection"]["symbols"]] == ["A", "B"]
+
+
+def test_llm_select_prompt_warns_against_picking_option_contracts(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(graph, "ChatOpenAI", lambda **kwargs: FakeLLM(captured))
+    cfg = OmegaConf.create(
+        {
+            "analyst": {
+                "max_universe_size": 10,
+                "default_budget": 5000,
+                "indicator_fetch_limit": 15,
+                "track_record_days": 5,
+            },
+            "llm": {"base_url": "http://x", "model": "m", "temperature": 0.1},
+        }
+    )
+    state = {
+        "raw_candidates": [{"symbol": "MGN", "market": "stocks"}],
+        "research_text": "",
+        "indicator_text": "",
+        "track_record_text": "",
+        "pnl_text": "- AMZN260916C00255000: qty 2, avg entry $6.00",
+        "selection": None,
+    }
+
+    graph.llm_select(state, cfg)
+
+    system_content = captured["messages"][0].content
+    assert "OCC" in system_content
+    assert "copied verbatim from the candidate list" in system_content
+
+
 class FakePosition:
     def __init__(
         self,

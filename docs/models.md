@@ -93,3 +93,27 @@ availability, k8s serving templates, KV-cache tuning) that does not fit the
 hackathon window. With a capable-enough dense model the Ollama path is reliable
 in practice, and `_fallback_pick` remains as a first-class safety net for any
 call that still comes back empty.
+
+## The Analyst has the same failure mode — and now the same safety net
+
+The Dealer's `_fallback_pick` covers the *contract-selection* LLM call. The
+Analyst's `llm_select` call — "pick today's tradeable universe" — can fail the
+same way, and did once on 3 Sep 2026: `qwen2.5:32b` returned seven picks, but
+every one was an **OCC option-contract symbol** (`AMZN260916C00255000`, …) copied
+out of the open-positions P&L snapshot in its prompt, not an underlying ticker.
+`validate_selection` correctly dropped all seven as not-in-candidate-list — and
+the Analyst then wrote a **zero-symbol portfolio**, which silently benched the
+Dealer for the entire session (no symbols to poll → no BUY/SELL decisions →
+no trades).
+
+Two fixes:
+
+- **Prompt** — `llm_select`'s system prompt now states explicitly that every pick
+  must be copied verbatim from the candidate list, and that the open-positions
+  snapshot lists option contracts by OCC symbol which are never valid picks.
+- **`ensure_universe` node** — when the validated selection is empty *and* there
+  were real candidates, it writes the top `analyst.fallback_universe_size` (3)
+  movers by `abs(change_pct)` at `analyst.default_budget`. Deterministic, drawn
+  only from vetted candidates, still subject to every downstream risk gate — the
+  Analyst-side counterpart to `_fallback_pick`. A genuinely empty candidate pool
+  (market closed, crypto off) still writes an empty portfolio, as it should.

@@ -103,6 +103,7 @@ to the Dealer.
 | `fetch_position_pnl` | a live unrealized P&L snapshot of everything currently held (`trading_client.get_all_positions()`) |
 | `llm_select` | the decision LLM call — see below |
 | `validate_selection` | drops any pick whose symbol wasn't actually a candidate (a hallucination), then greedily drops trailing picks once their summed `budget` would exceed `analyst.max_total_budget_usd` |
+| `ensure_universe` | if the validated selection is empty — an empty LLM return, or every pick dropped as a hallucination — and there were real candidates to fall back on, writes the top `analyst.fallback_universe_size` (3) movers by `abs(change_pct)` at `analyst.default_budget`. Deterministic, drawn only from vetted candidates, and still subject to every Dealer/Floor Broker risk gate — the Analyst-side counterpart to the Dealer's `_fallback_pick`, so an empty selection can't bench the Dealer for a whole session |
 | `write_portfolio` | patches the `portfolio` ConfigMap via the `kubernetes` Python client, then posts a "Morning Market Report" to Slack (picks, rationale, account equity/cash/buying power) |
 
 ```mermaid
@@ -113,7 +114,8 @@ flowchart TD
     C2 --> C3[fetch_position_pnl]
     C3 --> D[llm_select]
     D --> E[validate_selection]
-    E --> F[write_portfolio]
+    E --> E2[ensure_universe]
+    E2 --> F[write_portfolio]
     F --> G([END])
 ```
 

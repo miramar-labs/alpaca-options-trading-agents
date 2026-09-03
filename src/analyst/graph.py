@@ -332,6 +332,11 @@ def llm_select(state: AnalystState, cfg) -> AnalystState:
         "You are the Analyst agent on an automated trading floor. "
         f"Pick at most {cfg.analyst.max_universe_size} symbols worth trading today, "
         "drawn from the candidate list and informed by the research text. "
+        "Every symbol you pick MUST be copied verbatim from the candidate list below -- these are "
+        "underlying tickers (e.g. AAPL) or crypto pairs (e.g. BTC/USD). Anything not in that list "
+        "is dropped. In particular, the open-positions snapshot further down lists OPTION CONTRACTS "
+        "by their full OCC symbol (e.g. AMZN260916C00255000): those are never valid picks -- never "
+        "put an OCC-style symbol in your selection. "
         "Where a candidate has technical indicator values provided, ground your reasoning in "
         "those actual values rather than news sentiment alone. "
         "Each candidate object includes a `market` field (\"stocks\", or a crypto exchange name "
@@ -371,6 +376,28 @@ def llm_select(state: AnalystState, cfg) -> AnalystState:
     return {**state, "selection": selection.model_dump()}
 
 
+def _cap_to_total_budget(picks: list[dict], cfg) -> list[dict]:
+    """Drops trailing picks (in the given order, treated as priority order) once the running
+    budget total would exceed analyst.max_total_budget_usd. Per-pick `budget` has no upper bound
+    of its own (src/analyst/schema.py) and the LLM's per-pick default is only a suggestion, so
+    this is the last-line cap on how much new-BUY capital one selection can authorize -- applied
+    to both the LLM's selection and the deterministic fallback below."""
+    max_total_budget = cfg.analyst.max_total_budget_usd
+    capped: list[dict] = []
+    running_total = 0.0
+    for pick in picks:
+        if running_total + pick["budget"] > max_total_budget:
+            log(
+                f"⚠️ dropping pick {pick['symbol']} (budget {pick['budget']}) -- "
+                f"would exceed analyst.max_total_budget_usd ({max_total_budget}), "
+                f"running total {running_total}"
+            )
+            continue
+        running_total += pick["budget"]
+        capped.append(pick)
+    return capped
+
+
 def validate_selection(state: AnalystState, cfg) -> AnalystState:
     """The LLM's `exchange` field is regenerated text, not guaranteed to match the candidate it
     was actually given -- trust discover_candidates()'s own `market` tag instead, and drop any
@@ -386,27 +413,48 @@ def validate_selection(state: AnalystState, cfg) -> AnalystState:
         pick["exchange"] = market
         validated.append(pick)
 
-    # Per-pick `budget` has no upper bound of its own (src/analyst/schema.py), and the system
-    # prompt's per-pick default is only a suggestion the LLM can ignore -- nothing upstream stops
-    # a selection from authorizing far more total new-BUY capital than intended. Cap the sum,
-    # dropping trailing picks (in the LLM's own returned order, treated as its priority order)
-    # once the running total would exceed the ceiling, rather than silently rewriting any pick's
-    # budget.
-    max_total_budget = cfg.analyst.max_total_budget_usd
-    capped = []
-    running_total = 0.0
-    for pick in validated:
-        if running_total + pick["budget"] > max_total_budget:
-            log(
-                f"⚠️ dropping pick {pick['symbol']} (budget {pick['budget']}) -- "
-                f"would exceed analyst.max_total_budget_usd ({max_total_budget}), "
-                f"running total {running_total}"
-            )
-            continue
-        running_total += pick["budget"]
-        capped.append(pick)
-
+    capped = _cap_to_total_budget(validated, cfg)
     return {**state, "selection": {**state["selection"], "symbols": capped}}
+
+
+def ensure_universe(state: AnalystState, cfg) -> AnalystState:
+    """Guarantees the Dealer has something to work on. The LLM selection can come back empty --
+    an outright empty return, or every pick dropped by validate_selection() as a hallucination
+    (e.g. the model echoing OCC option-contract symbols from the open-positions snapshot back as
+    picks instead of underlying tickers). An empty portfolio silently benches the Dealer for the
+    whole session, so when that happens -- and only when there were real candidates to fall back
+    on -- take the top movers by absolute % change, sized at the default budget. Mirrors the
+    Dealer's own _fallback_pick: deterministic, drawn only from already-vetted candidates, and
+    still subject to every downstream Dealer/Floor Broker risk gate."""
+    if state["selection"]["symbols"]:
+        return state
+
+    candidates = state["raw_candidates"]
+    if not candidates:
+        log("⚠️ LLM selection empty and no candidates to fall back to -- writing an empty portfolio")
+        return state
+
+    n = cfg.analyst.get("fallback_universe_size", 3)
+    ranked = sorted(candidates, key=_by_abs_change_pct, reverse=True)[:n]
+    fallback = _cap_to_total_budget(
+        [
+            {
+                "symbol": c["symbol"],
+                "exchange": c["market"],
+                "budget": float(cfg.analyst.default_budget),
+                "indicators": list(DEFAULT_INDICATORS),
+                "rationale": "deterministic fallback -- LLM selection was empty or fully invalidated",
+            }
+            for c in ranked
+        ],
+        cfg,
+    )
+    symbols = [pick["symbol"] for pick in fallback]
+    log(f"⚠️ LLM selection empty -- falling back to top {len(fallback)} movers: {symbols}")
+    slack.notify_error(
+        "ANALYST", f"LLM selection was empty/invalid; deterministic fallback picked {symbols}"
+    )
+    return {**state, "selection": {**state["selection"], "symbols": fallback}}
 
 
 def write_portfolio(state: AnalystState, cfg) -> AnalystState:
@@ -417,7 +465,8 @@ def write_portfolio(state: AnalystState, cfg) -> AnalystState:
         "symbols": selection["symbols"],
     }
     _write_portfolio(payload)
-    log(f"✅ wrote portfolio with {len(payload['symbols'])} symbols")
+    icon = "✅" if payload["symbols"] else "⚠️"
+    log(f"{icon} wrote portfolio with {len(payload['symbols'])} symbols")
 
     for pick in payload["symbols"]:
         db.record_analyst_pick(
@@ -471,6 +520,7 @@ def build_graph():
     graph.add_node("fetch_position_pnl", lambda state: fetch_position_pnl(state, load_config()))
     graph.add_node("llm_select", lambda state: llm_select(state, load_config()))
     graph.add_node("validate_selection", lambda state: validate_selection(state, load_config()))
+    graph.add_node("ensure_universe", lambda state: ensure_universe(state, load_config()))
     graph.add_node("write_portfolio", lambda state: write_portfolio(state, load_config()))
     graph.add_node("crypto_eod_report", lambda state: crypto_eod_report(state, load_config()))
 
@@ -481,7 +531,8 @@ def build_graph():
     graph.add_edge("fetch_track_record", "fetch_position_pnl")
     graph.add_edge("fetch_position_pnl", "llm_select")
     graph.add_edge("llm_select", "validate_selection")
-    graph.add_edge("validate_selection", "write_portfolio")
+    graph.add_edge("validate_selection", "ensure_universe")
+    graph.add_edge("ensure_universe", "write_portfolio")
     graph.add_edge("write_portfolio", "crypto_eod_report")
     graph.add_edge("crypto_eod_report", END)
 
