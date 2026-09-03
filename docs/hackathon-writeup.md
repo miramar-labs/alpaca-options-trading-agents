@@ -122,8 +122,9 @@ system's ability to *open* new positions is currently gated.
 
 ## Deployment
 
-The whole stack runs on a DGX Spark k3s cluster, deployed by a GitHub Actions CI/CD chain on a
-self-hosted runner: every push runs tests + lint, a green run on `main` builds and pushes four
+The whole stack runs on a DGX Spark k3s cluster — a machine powered entirely by on-site
+**solar**, so every local inference is also off-grid — deployed by a GitHub Actions CI/CD chain
+on a self-hosted runner: every push runs tests + lint, a green run on `main` builds and pushes four
 container images to GHCR, and a green build triggers a rolling deploy to the
 `alpaca-options-trader` namespace. Config (`config.yaml`) is fetched fresh from GitHub at
 runtime by every pod every 60 seconds rather than baked into the image, so most tuning —
@@ -139,8 +140,8 @@ small scheduled jobs that read the account and `config.yaml` and commit the resu
   against the one paper account
 - **alpaca-mcp-server** — the official MCP server exposing Alpaca's tools, run locally as a
   stdio subprocess per Dealer poll
-- **Ollama**, self-hosted on a DGX Spark, serving `qwen2.5:32b-instruct-q4_K_M` as the LLM
-  behind every agent decision — no external LLM API calls (see `docs/models.md`)
+- **Ollama**, self-hosted on a 100% solar-powered DGX Spark, serving `qwen2.5:32b-instruct-q4_K_M`
+  as the LLM behind every agent decision — no external LLM API calls (see `docs/models.md`)
 - **FastAPI** (Floor Broker), **Postgres** (shared platform instance — cross-cycle agent
   memory, audit trail, DB-backed reconciliation), **Kubernetes/k3s**, **GitHub Actions** (CI/CD + badges),
   **TAAPI.io** (technical indicators), **Finnhub** (earnings calendar), **Slack** (notifications)

@@ -493,6 +493,10 @@ The whole system runs on a single **NVIDIA DGX Spark** — a self-hosted k3s clu
 Ollama for inference, the shared Postgres instance, and a self-hosted GitHub Actions runner for
 CI/CD. Nothing but Alpaca / TAAPI / Finnhub / Slack / GitHub traffic ever leaves the machine.
 
+That DGX Spark runs on **100% solar power** — an on-site array, not grid electricity and not a
+datacentre. Every LLM decision in this system is therefore not just local but off-grid: the
+model inference behind every Analyst, Dealer and MCP call is powered entirely by on-site solar.
+
 All four workloads live in the `alpaca-options-trader` namespace: the **Analyst** and **EOD
 Report** CronJobs, and the **Dealer** and **Floor Broker** Deployments (each 1/1). Every agent
 is its own image, pulled from GHCR and rolled out by the runner on a green build of `main`.

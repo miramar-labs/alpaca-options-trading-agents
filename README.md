@@ -12,7 +12,8 @@ A 3-agent options-trading floor built for the **Alpaca AI Trading Agents Hackath
 the hackathon ($100k starting balance).
 Every agent's LLM call runs as **local inference on an NVIDIA DGX Spark**, via Ollama — no
 external LLM API. The whole stack — agents, LLM inference, Postgres, and CI/CD — runs on that
-one machine; nothing but Alpaca/TAAPI/Finnhub/Slack/GitHub traffic ever leaves it.
+one machine; nothing but Alpaca/TAAPI/Finnhub/Slack/GitHub traffic ever leaves it. The DGX
+itself runs on **100% solar power**, so every model decision is local *and* off-grid.
 
 - **Analyst** — each morning, screens the market and picks the day's tradeable universe.
 - **Dealer** — polls each symbol for a BUY / SELL / HOLD signal, then uses an **Alpaca MCP**
