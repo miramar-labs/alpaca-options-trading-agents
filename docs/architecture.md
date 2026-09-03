@@ -196,14 +196,13 @@ flowchart TD
 Every graph run is traced to LangSmith (`LANGCHAIN_API_KEY`, project
 `alpaca-options-trading-agents`), tagged `dealer`:
 
-![LangSmith trace of one Dealer graph run for AAPL](img/langsmith-dealer-trace.png)
+![LangSmith trace of one Dealer graph run for TSLA](img/langsmith-dealer-trace.png)
 
-*One cycle for AAPL: `fetch_indicators` (1.6s) -> `fetch_market_data` (1.1s) ->
-`llm_call` (30.5s, ~5.6k tokens) -> `call_floor_broker` (0.4s). The model
-returned HOLD, so `execution_result` is `{detail: HOLD, status: skipped}`,
-`option_pick` is null, and the contract-selection node is never entered. This
-trace was captured while the Dealer still ran `qwen3.6:35b-a3b`; it now runs
-`qwen2.5:32b-instruct-q4_K_M` (see [models.md](models.md)).*
+*One cycle for TSLA: `fetch_indicators` (0.6s) -> `fetch_market_data` (0.8s) ->
+`llm_call` (22.8s, ~3.0k tokens, `qwen2.5:32b-instruct-q4_K_M`) ->
+`call_floor_broker` (0.5s). The model returned HOLD, so `execution_result` is
+`{detail: HOLD, status: skipped}`, `option_pick` is null, and the
+contract-selection node is never entered (see [models.md](models.md)).*
 
 **LLM call:** same pattern as Analyst — `ChatOpenAI(base_url=cfg.llm.base_url,
 ...).with_structured_output(Signal)`. System prompt: *"You are an expert technical trader in
