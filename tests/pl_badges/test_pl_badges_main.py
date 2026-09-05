@@ -30,6 +30,10 @@ def test_market_closed_leaves_badges_dir_untouched(monkeypatch, tmp_path):
 def test_open_market_writes_both_badge_files(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "_now_eastern", lambda: _LATE_ET_INSTANT)
     monkeypatch.setattr(main, "is_stock_market_open", lambda day: True)
+    # Isolate from the real Alpaca portfolio-history call reconcile_settled_history now makes --
+    # these tests exercise history-file merging, not settlement reconciliation itself (see
+    # tests/common/test_pl_badges.py for that).
+    monkeypatch.setattr(main, "reconcile_settled_history", lambda history_pl, today: history_pl)
     badges_dir = _use_tmp_badges_dir(monkeypatch, tmp_path)
     monkeypatch.setattr(main, "fetch_pl_summary", lambda today, history_pl: {"today_pl": 50.0, "ytd_pl": -100.0})
 
@@ -45,6 +49,10 @@ def test_open_market_persists_todays_pl_into_the_history_file(monkeypatch, tmp_p
     badges_dir = _use_tmp_badges_dir(monkeypatch, tmp_path)
     monkeypatch.setattr(main, "_now_eastern", lambda: _LATE_ET_INSTANT)
     monkeypatch.setattr(main, "is_stock_market_open", lambda day: True)
+    # Isolate from the real Alpaca portfolio-history call reconcile_settled_history now makes --
+    # these tests exercise history-file merging, not settlement reconciliation itself (see
+    # tests/common/test_pl_badges.py for that).
+    monkeypatch.setattr(main, "reconcile_settled_history", lambda history_pl, today: history_pl)
     monkeypatch.setattr(main, "fetch_pl_summary", lambda today, history_pl: {"today_pl": 50.0, "ytd_pl": -100.0})
 
     main.main()
@@ -59,6 +67,10 @@ def test_open_market_merges_todays_pl_with_existing_history(monkeypatch, tmp_pat
     (badges_dir / "pl_history.json").write_text(json.dumps({"2026-08-05": -100.0, "2026-08-06": 50.0}))
     monkeypatch.setattr(main, "_now_eastern", lambda: _LATE_ET_INSTANT)
     monkeypatch.setattr(main, "is_stock_market_open", lambda day: True)
+    # Isolate from the real Alpaca portfolio-history call reconcile_settled_history now makes --
+    # these tests exercise history-file merging, not settlement reconciliation itself (see
+    # tests/common/test_pl_badges.py for that).
+    monkeypatch.setattr(main, "reconcile_settled_history", lambda history_pl, today: history_pl)
     received = {}
 
     def _fake_fetch(today, history_pl):
@@ -81,6 +93,10 @@ def test_history_dates_by_eastern_trading_day_not_utc_rollover(monkeypatch, tmp_
     badges_dir = _use_tmp_badges_dir(monkeypatch, tmp_path)
     monkeypatch.setattr(main, "_now_eastern", lambda: _LATE_ET_INSTANT)
     monkeypatch.setattr(main, "is_stock_market_open", lambda day: True)
+    # Isolate from the real Alpaca portfolio-history call reconcile_settled_history now makes --
+    # these tests exercise history-file merging, not settlement reconciliation itself (see
+    # tests/common/test_pl_badges.py for that).
+    monkeypatch.setattr(main, "reconcile_settled_history", lambda history_pl, today: history_pl)
     monkeypatch.setattr(main, "fetch_pl_summary", lambda today, history_pl: {"today_pl": 154.77, "ytd_pl": 84.35})
 
     main.main()

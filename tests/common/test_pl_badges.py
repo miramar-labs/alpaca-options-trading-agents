@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from src.common import pl_badges
 
@@ -10,20 +10,32 @@ class FakeAccount:
 
 
 class FakeHistory:
-    def __init__(self, base_value):
+    def __init__(self, base_value, timestamp=None, profit_loss=None):
         self.base_value = base_value
+        self.timestamp = timestamp
+        self.profit_loss = profit_loss
 
 
 class FakeTradingClient:
-    def __init__(self, equity, last_equity, base_value):
-        self._account = FakeAccount(equity, last_equity)
-        self._history = FakeHistory(base_value)
+    def __init__(self, equity=None, last_equity=None, base_value=None, timestamp=None, profit_loss=None):
+        self._account = FakeAccount(equity, last_equity) if equity is not None else None
+        self._history = FakeHistory(base_value, timestamp, profit_loss)
 
     def get_account(self):
         return self._account
 
     def get_portfolio_history(self, request):
         return self._history
+
+
+def _bar_epoch_for_trading_day(day: date) -> int:
+    """Alpaca's 1D portfolio-history bars come back timestamped at UTC midnight of the calendar
+    day after the (US/Eastern) trading date they cover -- build a fake timestamp the same way so
+    reconcile_settled_history's UTC->Eastern conversion recovers `day` again, matching production."""
+    from datetime import UTC
+
+    utc_midnight = datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(days=1)
+    return int(utc_midnight.timestamp())
 
 
 def test_fetch_pl_summary_computes_today_and_ytd_pl(monkeypatch):
@@ -106,6 +118,57 @@ def test_fetch_pl_summary_does_not_double_count_todays_entry_across_the_utc_midn
 
     assert summary["today_pl"] == 154.77
     assert summary["ytd_pl"] == 84.35
+
+
+def test_reconcile_settled_history_overwrites_a_stale_persisted_entry(monkeypatch):
+    """Regression test for the 2-3 Sep 2026 incident (commit bbbf0b5): a same-day badge run
+    persisted a stale intraday options mark that Alpaca's own settled history later corrected."""
+    stale_day = date(2026, 9, 2)
+    fake_client = FakeTradingClient(
+        timestamp=[_bar_epoch_for_trading_day(stale_day)],
+        profit_loss=[2536.5],
+    )
+    monkeypatch.setattr(pl_badges, "trading_client", fake_client)
+
+    reconciled = pl_badges.reconcile_settled_history({stale_day.isoformat(): 1678.5}, today=date(2026, 9, 5))
+
+    assert reconciled[stale_day.isoformat()] == 2536.5
+
+
+def test_reconcile_settled_history_adds_a_missing_day_and_leaves_others_untouched(monkeypatch):
+    known_day = date(2026, 9, 1)
+    fake_client = FakeTradingClient(
+        timestamp=[_bar_epoch_for_trading_day(known_day)],
+        profit_loss=[-1359.42],
+    )
+    monkeypatch.setattr(pl_badges, "trading_client", fake_client)
+
+    reconciled = pl_badges.reconcile_settled_history({"2026-08-31": 10.0}, today=date(2026, 9, 5))
+
+    assert reconciled == {"2026-08-31": 10.0, known_day.isoformat(): -1359.42}
+
+
+def test_reconcile_settled_history_never_overwrites_todays_own_unsettled_entry(monkeypatch):
+    today = date(2026, 9, 5)
+    fake_client = FakeTradingClient(
+        timestamp=[_bar_epoch_for_trading_day(today)],
+        profit_loss=[9999.99],
+    )
+    monkeypatch.setattr(pl_badges, "trading_client", fake_client)
+
+    reconciled = pl_badges.reconcile_settled_history({today.isoformat(): 42.0}, today=today)
+
+    assert reconciled[today.isoformat()] == 42.0
+
+
+def test_reconcile_settled_history_ignores_a_bar_with_no_profit_loss_value(monkeypatch):
+    day = date(2026, 9, 1)
+    fake_client = FakeTradingClient(timestamp=[_bar_epoch_for_trading_day(day)], profit_loss=[None])
+    monkeypatch.setattr(pl_badges, "trading_client", fake_client)
+
+    reconciled = pl_badges.reconcile_settled_history({}, today=date(2026, 9, 5))
+
+    assert reconciled == {}
 
 
 def test_build_badge_payload_formats_positive_value_as_brightgreen():

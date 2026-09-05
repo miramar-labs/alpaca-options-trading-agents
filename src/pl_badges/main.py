@@ -6,7 +6,7 @@ import pytz
 
 from src.common.logging import get_logger
 from src.common.market_calendar import is_stock_market_open
-from src.common.pl_badges import build_badge_payload, fetch_pl_summary
+from src.common.pl_badges import build_badge_payload, fetch_pl_summary, reconcile_settled_history
 
 log = get_logger("PL-BADGES")
 
@@ -31,7 +31,7 @@ def main():
         log(f"📅 {today} was not a trading day — leaving badges unchanged.")
         return
 
-    history_pl = _load_history()
+    history_pl = reconcile_settled_history(_load_history(), today)
     summary = fetch_pl_summary(today, history_pl)
     BADGES_DIR.mkdir(exist_ok=True)
     (BADGES_DIR / "today-pl.json").write_text(json.dumps(build_badge_payload("Today's P/L", summary["today_pl"])))

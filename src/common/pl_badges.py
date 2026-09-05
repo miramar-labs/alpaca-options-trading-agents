@@ -1,8 +1,47 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
+import pytz
 from alpaca.trading.requests import GetPortfolioHistoryRequest
 
 from src.common.alpaca_client import trading_client
+
+_EASTERN = pytz.timezone("US/Eastern")
+
+
+def reconcile_settled_history(history_pl: dict[str, float], today: date, lookback_days: int = 10) -> dict[str, float]:
+    """`account.equity` / `account.last_equity` can still reflect a stale intraday options mark
+    for a while after the 4pm ET close -- observed drifting by $700-$1,300 on three separate
+    trading days (1, 2, 3 Sep 2026; see commits 13fbf2e and bbbf0b5) before Alpaca's own ledger
+    settled, with no reliable fixed delay after which it's always safe to read. Rather than chase
+    that delay with cron timing, re-read Alpaca's own settled 1D portfolio-history bars for the
+    trailing `lookback_days` on every run and overwrite any already-persisted entry that no
+    longer matches -- self-healing by the next run regardless of when today's own (still
+    provisional) number was captured. `today`'s own entry is never touched here since that day's
+    bar isn't settled yet either -- only fetch_pl_summary's live equity/last_equity read is
+    trusted for today, until it becomes "yesterday" on a later run.
+
+    Portfolio-history 1D bars come back timestamped at UTC midnight; that's one calendar day past
+    the actual (US/Eastern) trading date the bar covers whenever the venue is west of UTC, so the
+    trading date is recovered by converting to US/Eastern rather than by reading the UTC date
+    directly. `profit_loss[i]` is Alpaca's own day-over-day equity delta (equity[i] - equity[i-1]),
+    matching exactly what `fetch_pl_summary`'s own today_pl computation measures."""
+    start = today - timedelta(days=lookback_days)
+    history = trading_client.get_portfolio_history(GetPortfolioHistoryRequest(start=start, timeframe="1D"))
+    timestamps = getattr(history, "timestamp", None) or []
+    daily_pls = getattr(history, "profit_loss", None) or []
+
+    reconciled = dict(history_pl)
+    for ts, day_pl in zip(timestamps, daily_pls):
+        if day_pl is None:
+            continue
+        day = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(_EASTERN).date()
+        if day >= today:
+            continue
+        key = day.isoformat()
+        settled_pl = round(day_pl, 2)
+        if key not in reconciled or abs(reconciled[key] - settled_pl) >= 0.01:
+            reconciled[key] = settled_pl
+    return reconciled
 
 
 def fetch_pl_summary(today: date, history_pl: dict[str, float] | None = None) -> dict:
