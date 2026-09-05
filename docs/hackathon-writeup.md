@@ -153,7 +153,7 @@ plumbing itself.** The MCP tool-calling loop genuinely works end-to-end: the age
 right tools, pulls real chain data, and reasons about it. But the `.with_structured_output()`
 call at the *end* of that loop — the one that has to emit a populated `OptionContractPick` —
 came back empty on the first model we ran, `qwen3.6:35b-a3b`, on **every** cycle: all seven
-option positions opened on 1-2 Sep were placed by the deterministic fallback picker, not the
+option positions, all opened on 1 Sep, were placed by the deterministic fallback picker, not the
 model. We first read this as an Ollama constrained-decoding quirk tied to the long, tool-heavy
 context. It wasn't: instrumenting the failing call showed a ~4k-token prompt against a 32k
 window returning `content=''` after a single token — a constrained-decoding failure driven by
@@ -188,33 +188,54 @@ non-hackathon version of this system already needed for real paper-money trades.
 
 ## Results
 
-*Snapshot at the 2 Sep 2026 close — day 2 of the competition window, with the system still
-running. The live P/L badges in the README and the `options_trades` / `floor_broker_events`
-tables in Postgres are the current source of truth. No position has closed yet, so there is no
-realized P/L or win rate to report.*
+*Snapshot at the 4 Sep 2026 close — the final day of the competition window, with the system
+still running. The live P/L badges in the README and the `options_trades` /
+`floor_broker_events` tables in Postgres are the current source of truth.*
 
-**Trading activity (1–2 Sep 2026, two sessions).** Across the two sessions the Dealer polled the
-watchlist every 600s; the great majority of calls were HOLD, with a couple of dozen BUY signals
-and a handful of SELL. Those produced **7 distinct option positions** — the rest were stopped
-before execution by the risk layer: seven below the 0.6 confidence floor, several as duplicates
-of a position already open or an order already in flight, three because no contract in the
-fetched chain passed the DTE / delta / open-interest / volume gates, and the remainder swallowed
-by the daily profit-target halt once day 2 went green. All 7 submitted orders filled (100%),
-each within half a minute.
+**Trading activity, day by day.** All 7 option positions this account has ever held were opened
+in a single session on **1 Sep** — the Dealer polled the watchlist every 600s; the great majority
+of calls were HOLD, with a couple of dozen BUY signals and a handful of SELL. Positions that
+didn't get opened were stopped before execution by the risk layer: seven below the 0.6 confidence
+floor, several as duplicates of a position already open or an order already in flight, three
+because no contract in the fetched chain passed the DTE / delta / open-interest / volume gates.
+All 7 submitted orders filled (100%), each within half a minute. Every session since has been
+capped by a *different* one of the eight risk gates rather than by a lack of signal:
 
-**Open book (2 Sep close).** 5 long calls, 2 long puts, ~$10.3k current value (~$10.0k premium
-deployed at entry), entry deltas 0.43–0.53, 15–45 DTE. Account equity **$100,319 (+0.3% vs the
-$100k open)**, cash $89,979; the session gained **+$1,678 (+1.70%)** on the day. 4 of 7
-positions green — best V 375C at +25% and FRVO Sep put at +22%; worst MSFT 505C at −31% and
-AMZN 255C at −18%. Day 1 had closed at $98,641 (−1.4%); day 2 clawed most of it back.
+- **2 Sep** — the Dealer fired 16 real BUY signals across the day's universe (NVDA, JPM, MSFT,
+  V…), every one rejected at the door. The **daily profit-target halt** tripped as early as
+  10:03am ET, ~30 minutes into the session, once intraday P/L cleared +$1,000, and then held for
+  the rest of the day (`option_skipped: daily P&L $3,078.50 >= target $1000` by early afternoon).
+  The confidence floor and the duplicate-position guard rejected the rest. Zero new entries by
+  design, not by accident.
+- **3 Sep** — no new BUY signals reached execution; the day's only fills were the **first two
+  automated take-profit exits**: MSFT 505C (entry $7.80 → exit $12.85, +64.7%) and META 585C
+  (entry $15.90 → exit $28.50, +79.2%), for **+$2,270 realised**, both winners.
+- **4 Sep** — a config-scheduled **macro-event blackout** (NFP / jobs report day) blocked all new
+  BUY entries for the full session by design; SELL/HOLD/exits were unaffected. No exits
+  triggered on the day.
+
+**Open book (4 Sep close).** 5 positions remain from the original 7 — 3 long calls, 2 long puts —
+after the two 3 Sep take-profit exits. Account equity **$101,298.81 (+1.3% vs the $100k open)**,
+sum unrealized P/L **−$970**:
+
+| Contract | Unrealized P/L |
+|---|---|
+| AMZN 255C | +$180 (+15.0%) |
+| V 375C | −$210 (−16.4%) |
+| V 380C | −$510 (−35.4%) |
+| FRVO 20P (exp 18 Sep) | −$280 (−20.0%) |
+| FRVO 20P (exp 16 Oct) | −$150 (−9.7%) |
+
+V 380C is the current laggard at −35.4%, still short of the −50% synthetic stop-loss threshold,
+so it remains open under the exit loop's own terms rather than being force-closed early.
 
 ![End-of-day Slack report for 2 Sep 2026 in #alpaca-hackathon-trading-floor](img/eod-report.png)
 
-**Risk gates, observed firing.** The daily profit-target halt tripped repeatedly on 2 Sep once
-intraday P/L cleared +$1,000, blocking further BUYs for the rest of the session while leaving the
-synthetic-exit loop active. The confidence floor, the duplicate-position guard, and the
-contract-quality gates each rejected at least one real signal. No synthetic stop-loss,
-take-profit, or DTE-force-close has triggered — no position has hit −50%, +175%, or 3 DTE.
+**Risk gates, observed firing.** Across the four sessions, four of the eight deterministic gates
+have been caught live in the act: the confidence floor and duplicate-position guard (1–2 Sep),
+the daily profit-target halt (2 Sep), and the macro-event blackout (4 Sep) — plus the synthetic
+take-profit exit firing twice, cleanly, on 3 Sep. No synthetic stop-loss or DTE-force-close has
+triggered yet — no open position has hit −50% or 3 DTE.
 
 **Contract selection on days 1–2 ran entirely on the deterministic fallback.** All 7 contracts
 above were chosen by `_fallback_pick`, not the model's structured output — each trade's stored
